@@ -1,0 +1,68 @@
+Swift 1.5 Qwen3.8-27B
+Copyright 2026 UkisAI
+
+UkisAI's contribution (the "Swift Contribution") is licensed under the
+Swift Open License v1.0. See LICENSE.
+
+This model is a Derivative Work of Qwen3.8-27B
+  https://huggingface.co/Qwen/Qwen3.8-27B
+  Copyright 2026 Alibaba Cloud
+  Licensed under the Apache License, Version 2.0. See LICENSE-APACHE-2.0.
+
+Swift 1.5 continues UkisAI's Swift 1.0 model, itself a Qwen3.8-27B
+derivative. The full release incorporates the Qwen3.8-27B Base Model and
+UkisAI's Swift 1.0 and Swift 1.5 contributions.
+
+Changes made by UkisAI (Apache License 2.0, Section 4(b) change notice):
+  - model-*.safetensors, model.safetensors.index.json: the model weights from
+    Swift 1.0 were further adapted by UkisAI using additional post-training
+    methods.
+  - README.md: replaced. LICENSE and NOTICE added.
+  - All other files (config.json, generation_config.json, chat_template.jinja,
+    tokenizer.json, tokenizer_config.json, vocab.json, merges.txt,
+    preprocessor_config.json, video_preprocessor_config.json) are retained from
+    the parent model and remain available under Apache License, Version 2.0.
+
+GSQ-RCO GGUF release changes by UkisAI:
+  - Swift 1.5 weights converted to mixed-precision GGUF files, using the
+    published ISTA-DASLab per-tensor allocation and Swift-specific refinement.
+  - Optional MTP-head packages, quantization metadata and evaluation records added.
+  - README.md adapted for this quantized release.
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+ADDITIONAL NOTICE BY THE REPACKAGER (Swift Open License v1.0, section 4(b)/(d))
+-------------------------------------------------------------------------------
+
+Repository: this .ninfer repackaging of ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF
+for the NInfer engine. Four tiers are published, all from the source's -mtp
+packages: IQ2_XS (swift15_iq2xs_mtp.ninfer), IQ2_S (swift15_iq2s_mtp.ninfer),
+IQ3_XXS (swift15_iq3xxs_mtp.ninfer) and IQ3_S (swift15_iq3s_mtp.ninfer).
+
+Converter provenance:
+
+  * The conversion was performed with the `qwen3_8_27b_gguf` recipe from
+    github.com/Ryan-gsq/ninfer-16g-5070ti-5080-5090-qwen3.8-27b-gsq-rco
+    (Apache-2.0; a fork of iamwavecut/ninfer-all, originating from Neroued/ninfer).
+    Its tools/convert pipeline produced every object in this artifact.
+
+Changes relative to the weight source (ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF):
+
+  * The GGUF tensor payloads were imported into the NInfer container
+    (`gguf_blocks_v1` layout, encodings preserved: gguf_iq2_s / gguf_iq3_s /
+    gguf_iq3_xxs / gguf_iq2_xs / gguf_iq1_m / gguf_iq1_s / gguf_q2_k / gguf_q4_k /
+    gguf_q6_k / gguf_iq4_xs). Text-tower quantized blocks were **not**
+    dequantized or requantized.
+  * Vision tensors were re-encoded groupwise (q4_g64_fp16 / q5_g64_fp16 /
+    q8_g32_fp16) from the BF16 mmproj GGUF; norms and biases cast to bf16/fp32.
+  * The MTP-head packages (Swift-1.5-Qwen3.8-27B-GSQ-RCO-IQ2_XS-mtp.gguf,
+    -IQ2_S-mtp.gguf, -IQ3_XXS-mtp.gguf and -IQ3_S-mtp.gguf) were merged into
+    their respective containers.
+  * Tokenizer, chat template, generation config, vision preprocessor configs
+    were carried over verbatim as container resources.
+  * A proposal head (frequency shortlist, 131072 entries) was gathered from the
+    output head by the converter, as its recipe does.
+  * Full per-object provenance: the four swift15_*.ninfer.conversion.json
+    files in this repo.
+
+No model behaviour was modified: this is a format conversion, not a fine-tune.

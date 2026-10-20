@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MiIALocal.Core/MiIALocal.Core.csproj" />
+    <Project Path="src/MiIALocal.Desktop/MiIALocal.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MiIALocal.Tests/MiIALocal.Tests.csproj" />
+  </Folder>
+</Solution>

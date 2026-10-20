@@ -1,0 +1,90 @@
+name: Compilar Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Probar y generar Setup + portable
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Obtener codigo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validar version de la etiqueta
+        run: |
+          $source = Get-Content src/MiIALocal.Core/Configuration.cs -Raw
+          $version = [regex]::Match($source, 'public const string Version = "([^"]+)"').Groups[1].Value
+          if (!$version) { throw 'Falta la version del producto.' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw "La etiqueta debe coincidir con v$version." }
+      - name: Preparar SDK .NET fijado
+        run: ./scripts/Preparar-Desarrollo.ps1
+      - name: Preparar compilador oficial de Setup
+        run: ./scripts/Preparar-Instalador.ps1
+      - name: Compilar, probar y empaquetar
+        run: ./scripts/Compilar.ps1 -Publicar -CompiladorInstalador "$PWD/.tools/inno/ISCC.exe"
+      - name: Guardar Setup
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: artifacts/paquete-*/*Setup.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+      - name: Guardar portable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: artifacts/paquete-*/*win-x64.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+      - name: Guardar manifiesto de integridad
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: artifacts/paquete-*/paquete.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publicar version de desarrollo
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Recuperar paquetes de esta compilacion
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Crear prerelease con Setup y portable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_NOTES: |
+            Version de desarrollo para Windows 11 x64, RTX 5070 Ti y RTX 5080 de escritorio de 16 GB, con 32 GB de RAM.
+
+            Incluye Setup y ZIP portable, tema oscuro, contexto predeterminado de 64K y configuracion avanzada. El modelo de unos 12,8 GB se descarga desde el programa; no se incluye en estos archivos.
+
+            Pruebas basicas realizadas en RTX 5080. Pendientes: Windows limpio, uso prolongado y validacion fisica en RTX 5070 Ti. Los paquetes todavia no tienen firma de editor. Revisar las licencias del modelo y los componentes antes de usarlos.
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --prerelease --title "Mi IA Local $RELEASE_TAG" --notes "$RELEASE_NOTES"

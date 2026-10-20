@@ -1,0 +1,74 @@
+using System.Text.Json;
+
+namespace MiIALocal.Core;
+
+public sealed record DownloadAsset(string Id, string Name, string Url, string Sha256, string FileName, long? Bytes = null);
+public static class ReleaseProfile
+{
+    public const string Version = "0.1.0-dev";
+    public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
+    public const int Context = 65536;
+    public const int MaxOutput = 8192;
+    public static readonly DownloadAsset Model = new("model", "Modelo Qwen (12,8 GB)", "https://huggingface.co/fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer/resolve/7da3e38b9ee7a6c8888cf2112d3c5a48a952a2a8/swift15_iq3s_mtp.ninfer", "0e1771e4df425a7e05b0ffce8662cb500dc2546f3759767fe6ac2699d64c0816", "swift15_iq3s_mtp.ninfer", 12790639360);
+    public static readonly DownloadAsset Engine = new("ninfer", "Motor NInfer / KVMem", "https://github.com/kvmem/kvmem/releases/download/v0.18.0/kvmem-v0.18.0-ninfer-windows-rtx50-sm120a.zip", "f893dc9053cb27ef8cdbc32687c6bb29346d5829d5eb2272a58ddef7b6dbdf7d", "kvmem-0.18.0-rtx50.zip", 900767487);
+    public static readonly DownloadAsset Agent = new("opencode", "Agente OpenCode", "https://github.com/anomalyco/opencode/releases/download/v1.19.3/opencode-windows-x64.zip", "e4ce9117f55fc068414513789f8c7d1049f855d7518bb4e350b9170a3a20d8c3", "opencode-1.19.3.zip", 62204138);
+    public static readonly DownloadAsset Git = new("git", "Git portable", "https://github.com/git-for-windows/git/releases/download/v2.53.0.windows.3/MinGit-2.53.0.3-64-bit.zip", "0d7c85a26e45668b35d0d0aeb763289376cfc039e55e0938a617ed0dfa32e433", "mingit-2.53.0.3.zip", 41300221);
+    public static readonly DownloadAsset Node = new("node", "Node y npm portables", "https://nodejs.org/dist/v24.19.0/node-v24.19.0-win-x64.zip", "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73", "node-24.19.0.zip");
+    public static readonly DownloadAsset[] Components = [Engine, Agent, Git, Node];
+}
+
+public sealed class AppSettings
+{
+    public int ContextTokens { get; set; } = ReleaseProfile.Context;
+    public EngineTuning Tuning { get; set; } = new();
+    public string LastProject { get; set; } = "";
+    public string ModelDirectory { get; set; } = "";
+    public string ImportedModel { get; set; } = "";
+    public bool LicenseAccepted { get; set; }
+}
+
+public sealed record ContextProfile(int Tokens, int HostCacheMiB)
+{
+    public const int HistoryBudget = 24576;
+    public const int GenerationReserve = 8192;
+    public static ContextProfile For(int tokens) => tokens switch
+    {
+        32768 => new(32768, 2048),
+        65536 => new(65536, 4096),
+        _ => throw new InvalidDataException("Contexto no admitido. Elegí 32K o 64K experimental.")
+    };
+}
+
+public sealed class AppPaths
+{
+    public string Root { get; }
+    public string Runtime => Path.Combine(Root, "runtime");
+    public string Downloads => Path.Combine(Root, "downloads");
+    public string Logs => Path.Combine(Root, "logs");
+    public string SettingsFile => Path.Combine(Root, "settings.json");
+    public string AgentConfig => Path.Combine(Root, "opencode.json");
+    public string EngineExe => Path.Combine(Runtime, "ninfer", "kvmem-v0.18.0-ninfer-windows-rtx50-sm120a", "workers", "ninfer", "ninfer-kvmem-server.exe");
+    public string AgentExe => Path.Combine(Runtime, "opencode", "opencode.exe");
+    public string GitExe => Path.Combine(Runtime, "git", "cmd", "git.exe");
+    public string NodeExe => Path.Combine(Runtime, "node", "node-v24.19.0-win-x64", "node.exe");
+    public AppPaths(string? root = null)
+    {
+        Root = Path.GetFullPath(root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MiIALocal"));
+        foreach (var dir in new[] { Root, Runtime, Downloads, Logs }) Directory.CreateDirectory(dir);
+    }
+    public AppSettings LoadSettings()
+    {
+        if (!File.Exists(SettingsFile)) return new() { ModelDirectory = Path.Combine(Root, "models") };
+        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsFile), JsonOptions) ?? throw new InvalidDataException("No se pudieron leer los ajustes. Revisá settings.json.");
+    }
+    public void SaveSettings(AppSettings settings) => AtomicWrite(SettingsFile, JsonSerializer.Serialize(settings, JsonOptions));
+    public string ModelPath(AppSettings settings) => string.IsNullOrWhiteSpace(settings.ImportedModel) ? Path.Combine(settings.ModelDirectory, ReleaseProfile.Model.FileName) : settings.ImportedModel;
+    public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
+    public static void AtomicWrite(string path, string text)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        File.WriteAllText(temp, text, new System.Text.UTF8Encoding(false));
+        File.Move(temp, path, true);
+    }
+}

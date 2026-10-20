@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "status": "product-plan-not-a-tested-installer",
+  "releaseRequiresAllProfilesValidated": true,
+  "scope": "desktop-only-rtx5070ti-or-rtx5080",
+  "allowUnlistedHardware": false,
+  "futureHardwareExpansionPlanned": false,
+  "requiredProfiles": [
+    {
+      "id": "windows-rtx5080-16gb-ram32-qwen27b",
+      "gpu": "NVIDIA GeForce RTX 5080",
+      "variant": "desktop",
+      "vramGiB": 16,
+      "ramInstalledGiB": 32,
+      "referenceFile": "perfil-referencia.json",
+      "prototypeValidation": "passed-on-reference-machine",
+      "cleanInstallerValidation": "pending"
+    },
+    {
+      "id": "windows-rtx5070ti-16gb-ram32-qwen27b",
+      "gpu": "NVIDIA GeForce RTX 5070 Ti",
+      "variant": "desktop",
+      "vramGiB": 16,
+      "ramInstalledGiB": 32,
+      "candidateBase": "perfil-referencia.json",
+      "candidateContext": 65536,
+      "modelPolicy": "same-model-as-reference",
+      "prototypeValidation": "pending-on-physical-hardware",
+      "cleanInstallerValidation": "pending",
+      "externalEvidence": "https://github.com/Ryan-gsq/ninfer-16g-5070ti-5080-5090-qwen3.8-27b-gsq-rco/blob/main/docs/rtx-5070ti-windows.en.md"
+    }
+  ],
+  "notQualifiedByThisPlan": ["all laptops", "RTX 5070", "RTX 5070 Ti Laptop", "RTX 5080 Laptop", "all other GPUs", "AMD", "multi-GPU", "other operating systems"]
+}

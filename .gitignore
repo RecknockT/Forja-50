@@ -1,0 +1,10 @@
+.tools/
+.dev-data/
+artifacts/
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+*.ninfer
+*.part
