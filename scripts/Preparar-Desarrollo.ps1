@@ -7,5 +7,8 @@ $installer = Join-Path $toolsDirectory 'dotnet-install.ps1'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installer -UseBasicParsing
 & $installer -Version '10.0.402' -InstallDir (Join-Path $toolsDirectory 'dotnet') -NoPath
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo preparar el SDK local.' }
+$dotnetExe = Join-Path $toolsDirectory 'dotnet\dotnet.exe'
+if (!(Test-Path -LiteralPath $dotnetExe)) { throw 'No se encontro el SDK local despues de instalar.' }
+$installedVersion = & $dotnetExe --version
+if ($LASTEXITCODE -ne 0 -or $installedVersion.Trim() -ne '10.0.402') { throw 'No se pudo verificar el SDK local 10.0.402.' }
 Write-Output 'SDK preparado dentro del proyecto. Ejecutá scripts\Compilar.ps1.'
