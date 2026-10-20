@@ -5,7 +5,7 @@ namespace MiIALocal.Core;
 public sealed record DownloadAsset(string Id, string Name, string Url, string Sha256, string FileName, long? Bytes = null);
 public static class ReleaseProfile
 {
-    public const string Version = "0.1.2-dev";
+    public const string Version = "0.1.3-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;
