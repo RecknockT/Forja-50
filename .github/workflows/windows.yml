@@ -43,22 +43,25 @@ jobs:
       - name: Guardar Setup
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: windows-setup
           path: artifacts/paquete-*/*Setup.exe
-          archive: false
+          compression-level: 0
           if-no-files-found: error
           retention-days: 30
       - name: Guardar portable
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: windows-portable
           path: artifacts/paquete-*/*win-x64.zip
-          archive: false
+          compression-level: 0
           if-no-files-found: error
           retention-days: 30
       - name: Guardar manifiesto de integridad
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: windows-manifiesto
           path: artifacts/paquete-*/paquete.json
-          archive: false
+          compression-level: 0
           if-no-files-found: error
           retention-days: 30
 
