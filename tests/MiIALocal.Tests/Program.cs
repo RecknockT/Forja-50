@@ -103,6 +103,7 @@ await DownloadTests.RunAsync(root, Assert, Test);
 await StorageCleanupTests.RunAsync(root, Assert, Test);
 await Rtx3090Tests.RunAsync(root, Assert, Test);
 await GitHubTests.RunAsync(root, Assert, Test);
+await VisualTests.RunAsync(root, Assert, Test);
 
 await Test("Hardware: admitir solo las tres placas de escritorio con su memoria", () =>
 {

@@ -15,9 +15,14 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 if ($LASTEXITCODE -ne 0) { throw 'La compilación falló.' }
 & $dotnetExe run --project (Join-Path $projectRoot 'tests\MiIALocal.Tests') -c Release --no-build
 if ($LASTEXITCODE -ne 0) { throw 'Las pruebas fallaron.' }
+if ($env:FORJA_TEST_PYTHON) {
+    & $env:FORJA_TEST_PYTHON (Join-Path $projectRoot 'tests/visual_bridge_test.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba del puente visual.' }
+}
 & (Join-Path $PSScriptRoot 'Verificar-Cierre.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Configuracion.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Perfiles.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Modos.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-CuentaYLimpieza.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Almacenamiento.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 if (!$Publicar) { return }
@@ -25,7 +30,7 @@ $output = Join-Path $projectRoot ('artifacts\paquete-' + (Get-Date -Format 'yyyy
 $appDirectory = Join-Path $output 'app'
 & $dotnetExe publish (Join-Path $projectRoot 'src\MiIALocal.Desktop') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o $appDirectory --nologo
 if ($LASTEXITCODE -ne 0) { throw 'La publicación falló.' }
-if (Get-ChildItem -LiteralPath $appDirectory -Recurse -File | Where-Object { $_.Extension -in '.ninfer','.part' }) { throw 'El paquete contiene archivos de modelo inesperados.' }
+if (Get-ChildItem -LiteralPath $appDirectory -Recurse -File | Where-Object { $_.Extension -in '.ninfer','.part','.safetensors','.gguf' }) { throw 'El paquete contiene archivos de modelo inesperados.' }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIMEROS-PASOS.md') -Destination $appDirectory
 [IO.File]::WriteAllText((Join-Path $appDirectory 'portable.flag'), 'Los datos se guardan en la carpeta datos junto al ejecutable.')
 $zip = Join-Path $output "Forja-50-$version-Portable-win-x64.zip"

@@ -39,6 +39,22 @@ Si la descarga actual está trabada, pulsá Cancelar o Pausar y esperá a que se
 
 ## Datos y diagnóstico
 
+## Imágenes y animación (0.3.0 experimental)
+
+Elegí **Imágenes y animación** en Modo de uso. No hace falta elegir un proyecto ni instalar Qwen de programación, OpenCode o Git. Abrí Descargas y preparación, revisá las licencias y pulsá Preparar imágenes. La descarga inicial completa ronda 18,2 GB incluyendo ComfyUI, FLUX.2 Klein 4B, codificador y VAE; lo descargado se reutiliza. Marcar animaciones agrega unos 18,1 GB de pesos de Wan y sus componentes. El programa comprueba además espacio de extracción. Las descargas pueden pausarse y reanudarse.
+
+Pulsá **Iniciar IA**, escribí la descripción y **Generar**. La primera generación carga los pesos. Una imagen completada queda seleccionada como referencia: el próximo pedido edita esa imagen (por ejemplo, «cambiá solo el brazo izquierdo a rojo»). **Imagen nueva** elimina la referencia sin borrar resultados. También podés elegir una referencia PNG/JPG externa; Forja copia el archivo y conserva el original. No se promete que cada edición conserve todos los detalles.
+
+Para animar, prepará antes el paquete opcional, elegí Crear una animación, una referencia opcional y la duración. La configuración inicial usa 768 × 448, 24 FPS y 73/121 fotogramas (aproximadamente 3/5 segundos). **Configuración avanzada visual** permite fijar semilla y pasos de animación. El flujo guarda MP4 y GIF; Abrir resultado usa el visor del sistema y Guardar como permite elegir el formato disponible. La vista previa de GIF es estática. No se garantiza continuidad perfecta entre el último y el primer fotograma.
+
+Solo se ejecuta un modo a la vez. Cambiar con una IA activa pide detenerla; rechazar conserva la sesión actual. Cancelar una generación detiene el trabajador y registra el trabajo: se puede repetir, pero no retomar sus pasos intermedios. Los modelos descargados y resultados anteriores permanecen.
+
+Los datos visuales están bajo `visual` dentro de la carpeta de datos: `models`, `inputs`, `jobs` y `creations`. La limpieza de modelos, componentes o historial conserva las creaciones y referencias copiadas. El historial usa rutas relativas para poder mover la portable. La IA visual no tiene acceso a la sesión GitHub de Forja ni herramientas de shell/Git.
+
+**Pendiente:** inferencia real, consumo de VRAM/RAM y rendimiento en las tres placas; no se garantiza que todos los tamaños funcionen con 32 GB de RAM y otras aplicaciones abiertas. Se han comprobado protocolos, flujos, autenticación, GIF sintético, extracción, persistencia, UI y aislamiento sin cargar modelos. Revisá Diagnóstico si la generación informa falta de memoria.
+
+## Ubicación de los datos
+
 Desde 0.2.4 las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para los datos (modelos en `models`). Al actualizar se conserva la ubicación del programa y se reutilizan los datos anteriores en `%LOCALAPPDATA%\MiIALocal` si existen; no se mueven ni se vuelven a descargar. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
 
 ## Administrar almacenamiento y desinstalar

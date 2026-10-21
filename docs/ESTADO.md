@@ -1,6 +1,16 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.2.4.
+21 de octubre de 2026 · desarrollo 0.3.0.
+
+## Dos modos independientes (implementación inicial)
+
+- Selector Programación / Imágenes y animación. Programación conserva sus modelos, Git y OpenCode; el modo visual no los requiere. Ajustes separados y un único modo activo, con confirmación antes de detener y cambiar.
+- ComfyUI portable NVIDIA 0.42.1 fijado con SHA-256/tamaño. Descarga de FLUX.2 Klein 4B BF16, codificador Qwen3 4B y VAE; Wan 2.2 TI2V-5B y sus componentes son opcionales. Revisiones inmutables, tamaños y hashes de cada peso; preparación con descarga reanudable, comprobación de espacio y extracción 7z validada.
+- Pantalla visual propia: descripción, referencia, imagen nueva, resolución, duración, semilla y pasos, galería y exportación PNG/MP4/GIF. La última imagen se ofrece como referencia de edición; no se usa un LLM conversacional en este modo.
+- Motor solo en loopback con credencial efímera, comprobación del puente propio, rechazo de Origin y nodos externos deshabilitados. GIF con Pillow y MP4 con PyAV del motor; no se instala un FFmpeg separado.
+- Trabajos persistentes; cancelación detiene procesos propios y registra el estado. Recuperación sin relanzar trabajos y rutas de salida relativas para la portable. Limpieza protege creaciones y referencias.
+- Comprobaciones locales aprobadas: 74 del núcleo, 14 de ventanas/configuración, 2 del puente Python y una exportación GIF real de ocho fotogramas sintéticos. Compilación sin advertencias ni errores. Se contrastaron los argumentos de arranque con el código de ComfyUI fijado y se revisó la vista renderizada.
+- Sin inferencia física ni descarga de pesos durante el desarrollo. Consumo, rendimiento, descarga/extracción del portable completo y flujos reales del motor con las tres placas siguen pendientes. Las comprobaciones automáticas no certifican esas pruebas.
 
 ## Carpetas con el nombre público
 

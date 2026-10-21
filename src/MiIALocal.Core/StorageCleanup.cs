@@ -8,15 +8,17 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
 {
     private static readonly StringComparison Comparison = StringComparison.OrdinalIgnoreCase;
     public static bool Within(string path, string parent) => path.Equals(parent, Comparison) || path.StartsWith(Path.TrimEndingDirectorySeparator(parent) + Path.DirectorySeparatorChar, Comparison);
-    private string[] Imported => new[] { settings.ImportedModel, settings.ImportedNinferModel, settings.NinferEnginePath }
+    private string[] Imported => new[] { settings.ImportedModel, settings.ImportedNinferModel, settings.NinferEnginePath, paths.VisualInputs, paths.VisualOutputs }
         .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => Path.GetFullPath(p, paths.Root)).ToArray();
 
     public StorageEntry[] Inspect()
     {
         var models = new List<string>(); var partials = new List<string>();
-        foreach (var asset in new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel })
+        var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings)))
+            .Concat(VisualCatalog.All.Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!)));
+        foreach (var (asset, modelDirectory) in managedModels)
         {
-            var file = Path.Combine(paths.ModelDirectoryPath(settings), asset.FileName);
+            var file = Path.Combine(modelDirectory, asset.FileName);
             if (Imported.Any(p => p.Equals(file, Comparison))) continue;
             if (File.Exists(file)) models.Add(file);
             var directory = Path.GetDirectoryName(file)!;
@@ -37,7 +39,7 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
             Entry(StorageCategory.Models, "Modelos descargados por Forja", models),
             Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime]),
             Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials)),
-            Entry(StorageCategory.Conversations, "Conversaciones y datos del agente", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md" }.Select(p => Path.Combine(paths.Root, p))),
+            Entry(StorageCategory.Conversations, "Conversaciones e historial de trabajos", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md", "visual/jobs", "visual/user" }.Select(p => Path.Combine(paths.Root, p))),
             Entry(StorageCategory.Settings, "Configuración y registros", configuration),
             Entry(StorageCategory.GitHub, "Sesión de GitHub de Forja", [paths.GitHubCredentialStore, paths.GitHubAccountFile])
         ];

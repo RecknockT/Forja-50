@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private readonly HttpClient http = new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.None, MaxConnectionsPerServer = 32, ConnectTimeout = TimeSpan.FromSeconds(15) }) { Timeout = Timeout.InfiniteTimeSpan };
     private readonly Provisioner provisioner;
     private readonly RuntimeSupervisor runtime;
+    private readonly VisualPane visualPane;
+    private bool switchingWorkspace;
     private readonly DispatcherTimer healthTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private HardwareReport? hardware;
     private CancellationTokenSource? operation;
@@ -30,11 +32,18 @@ public partial class MainWindow : Window
     {
         InitializeComponent(); NativeWindowTheme.Attach(this); this.paths = paths; settings = paths.LoadSettings();
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
+        visualPane = new(paths, () => settings, http, () => hardware?.SelectedGpu, RunOperationAsync,
+            message => StatusLabel.Text = message, () => UpdateConfigurationSummary(), p =>
+            { if (closing) return; StatusLabel.Text = p.Stage; Progress.IsIndeterminate = p.Percentage is null; if (p.Percentage is { } percent) Progress.Value = percent; DetailLabel.Text = p.Stage.StartsWith("Generando") ? "El modo visual trabaja sin Qwen de programación ni OpenCode." : p.TransferDetails; });
+        VisualContainer.Children.Add(visualPane);
         LicenseCheck.IsChecked = settings.LicenseAccepted;
         runtime.StateChanged += (_, message) => Dispatcher.Invoke(() => { StatusLabel.Text = message; UpdateConfigurationSummary(); });
         UpdateProject(); ApplyModeToUi();
+        ApplyWorkspaceToUi();
         Loaded += async (_, _) =>
         {
+            if (App.Argument("--smoke-visual") is { } visualReport && App.Argument("--data-root") is not null)
+            { SmokeVisualModes(visualReport); exiting = true; Close(); return; }
             if (App.Argument("--smoke-cleanup-all") is { } cleanupReport && App.Argument("--data-root") is not null)
             {
                 await SmokeCleanupAllAsync(cleanupReport);
@@ -51,6 +60,8 @@ public partial class MainWindow : Window
                 exiting = true; Close(); return;
             }
             await InspectHardwareAsync();
+            if (settings.Mode == AppMode.Visual) ApplyWorkspaceToUi();
+            if (App.Arguments.Contains("--preview-visual")) { settings.Mode = AppMode.Visual; ApplyWorkspaceToUi(); RefreshControls(); }
             if (App.Argument("--smoke-browser-cleanup") is { } browserReport && App.Argument("--data-root") is not null)
             {
                 try
@@ -140,6 +151,8 @@ public partial class MainWindow : Window
         };
         healthTimer.Tick += async (_, _) =>
         {
+            if (!busy && !closing && visualPane.IsActive && !visualPane.IsReady)
+            { await visualPane.StopAsync(); StatusLabel.Text = "El motor visual se detuvo. Tus creaciones están guardadas; revisá Diagnóstico antes de iniciar otra vez."; RefreshControls(); }
             if (!busy && !closing && runtime.State == RuntimeState.Ready && !runtime.ProcessesHealthy)
             {
                 Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible;
@@ -299,7 +312,68 @@ public partial class MainWindow : Window
         UpdateButton.IsEnabled = available;
         ModelFolderButton.IsEnabled = ImportButton.IsEnabled = ContextChoice.IsEnabled;
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        CancelButton.Content = preparing ? "Pausar" : "Cancelar";
+        CancelButton.Content = preparing || visualPane.IsPreparing ? "Pausar" : "Cancelar";
+        var visual = settings.Mode == AppMode.Visual;
+        var bothStopped = runtime.State is RuntimeState.Stopped or RuntimeState.Error && !visualPane.IsActive;
+        WorkspaceChoice.IsEnabled = available;
+        visualPane.SetAvailable(available, compatible);
+        if (visual)
+        {
+            StartButton.IsEnabled = available && compatible && visualPane.IsPrepared;
+            StartButton.Content = visualPane.IsReady ? "IA visual lista" : "Iniciar IA";
+            StopButton.IsEnabled = available && visualPane.IsActive;
+            ContextChoice.IsEnabled = AdvancedButton.IsEnabled = GitHubButton.IsEnabled = false;
+        }
+        StorageButton.IsEnabled = available && bothStopped;
+    }
+    private void SmokeVisualModes(string report)
+    {
+        try
+        {
+            hardware = new([new(0, "NVIDIA GeForce RTX 5080", 16384, 15000, "fixture")], 32);
+            var context = settings.ContextTokens; var engine = settings.EngineMode;
+            WorkspaceChoice.SelectedIndex = 1; RefreshControls();
+            if (settings.Mode != AppMode.Visual || VisualContainer.Visibility != Visibility.Visible || WelcomePane.Visibility == Visibility.Visible || ProjectArea.Visibility != Visibility.Collapsed
+                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.IsEnabled || !ConfigurationSummary.Text.Contains("FLUX.2")) throw new Exception("No se aisló el espacio visual.");
+            visualPane.VerifyInterfaceForTests();
+            WorkspaceChoice.SelectedIndex = 0; RefreshControls();
+            if (settings.Mode != AppMode.Programming || VisualContainer.Visibility == Visibility.Visible || WelcomePane.Visibility != Visibility.Visible || settings.ContextTokens != context || settings.EngineMode != engine) throw new Exception("Se alteró programación al volver del modo visual.");
+            settings.Mode = AppMode.Visual; paths.SaveSettings(settings);
+            if (paths.LoadSettings().Mode != AppMode.Visual || File.Exists(paths.AgentExe) || File.Exists(paths.ComfyPython)) throw new Exception("Se requiere instalar un motor para seleccionar modo.");
+            AppPaths.AtomicWrite(report, "{\"status\":\"PASS\",\"independentModes\":true,\"referenceEditing\":true,\"gpuStarted\":false}");
+        }
+        catch (Exception error) { AppPaths.AtomicWrite(report, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.ToString() })); }
+    }
+    private void ApplyWorkspaceToUi()
+    {
+        var visual = settings.Mode == AppMode.Visual;
+        switchingWorkspace = true; WorkspaceChoice.SelectedIndex = visual ? 1 : 0; switchingWorkspace = false;
+        ProjectArea.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
+        ProjectSectionLabel.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
+        GitHubButton.Visibility = AdvancedButton.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
+        WelcomePane.Visibility = !visual && Chat.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        if (visual) Chat.Visibility = Visibility.Collapsed;
+        VisualContainer.Visibility = visual ? Visibility.Visible : Visibility.Collapsed;
+        WorkspaceTitle.Text = visual ? "Tu espacio para crear imágenes" : "Tu espacio para construir";
+        WorkspaceDescription.Text = visual ? "Imágenes, cambios y animaciones, con la IA en tu PC." : "Archivos, herramientas y Git, con la IA en tu PC.";
+        if (visual) DetailLabel.Text = "FLUX.2 Klein 4B · Wan opcional · una generación a la vez · sin contexto de programación";
+        visualPane.ReloadSettings(); UpdateConfigurationSummary();
+    }
+    private async void WorkspaceChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (settings is null || visualPane is null || switchingWorkspace || WorkspaceChoice.SelectedIndex < 0) return;
+        var requested = WorkspaceChoice.SelectedIndex == 1 ? AppMode.Visual : AppMode.Programming;
+        if (requested == settings.Mode) return;
+        if (busy || closing) { ApplyWorkspaceToUi(); return; }
+        if (runtime.State == RuntimeState.Ready || visualPane.IsActive)
+        {
+            if (MessageBox.Show(this, "Para cambiar de modo se detendrá la IA actual y se liberará su memoria. Tus archivos y resultados se conservan. ¿Continuar?", "Cambiar de modo", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            { ApplyWorkspaceToUi(); return; }
+            await RunOperationAsync(async _ => { await runtime.StopAsync(); await visualPane.StopAsync(); });
+            if (runtime.State == RuntimeState.Ready || visualPane.IsActive) { ApplyWorkspaceToUi(); return; }
+        }
+        settings.Mode = requested; paths.SaveSettings(settings); ApplyWorkspaceToUi(); RefreshControls();
+        StatusLabel.Text = requested == AppMode.Visual ? "Modo visual seleccionado. Prepará sus modelos y pulsá Iniciar IA." : "Modo programación seleccionado. Elegí tu proyecto e iniciá la IA.";
     }
     private void ContextChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -459,6 +533,7 @@ public partial class MainWindow : Window
     private void UpdateConfigurationSummary()
     {
         if (settings is null || ConfigurationSummary is null) return;
+        if (settings.Mode == AppMode.Visual && visualPane is not null) { ConfigurationSummary.Text = visualPane.Summary; return; }
         var t = settings.Tuning;
         if (settings.EngineMode == EngineMode.NInfer5080)
         {
@@ -494,15 +569,16 @@ public partial class MainWindow : Window
     }
     private async Task RunOperationAsync(Func<CancellationToken, Task> action)
     {
+        if (!preparing && !visualPane.IsPreparing) preparationPaused = false;
         if (busy || closing) return; busy = true; operation = new(); operationFinished = new(TaskCreationOptions.RunContinuationsAsynchronously); Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true; RefreshControls();
         try { await action(operation.Token); }
-        catch (OperationCanceledException) { StatusLabel.Text = preparationPaused ? "Preparación pausada. Pulsá Reanudar preparación para continuar." : "Acción cancelada. La descarga parcial se conserva para reanudar."; }
+        catch (OperationCanceledException) { StatusLabel.Text = preparationPaused ? "Preparación pausada. Pulsá Preparar / reanudar para continuar." : settings.Mode == AppMode.Visual ? "Acción visual cancelada. Las creaciones anteriores se conservan." : "Acción cancelada. La descarga parcial se conserva para reanudar."; }
         catch (Exception ex) { LogError(ex); StatusLabel.Text = ex.Message; DetailLabel.Text = "Podés revisar Diagnóstico y reintentar. No se muestra un error de una operación anterior."; }
         finally { operation.Dispose(); operation = null; busy = false; Progress.Visibility = Visibility.Collapsed; RefreshControls(); operationFinished.TrySetResult(); }
     }
     private void Storage_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        if (busy || closing || visualPane.IsActive || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
         var window = new StorageWindow(paths, settings, releaseBrowser: ReleaseBrowserForCleanupAsync) { Owner = this };
         window.ShowDialog();
         if (window.DataDeleted) RefreshAfterStorageCleanup(window.SettingsDeleted);
@@ -517,7 +593,7 @@ public partial class MainWindow : Window
             ApplyHardwareProfile();
         }
         Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible;
-        UpdateProject(); ApplyModeToUi(); RefreshControls();
+        UpdateProject(); ApplyModeToUi(); ApplyWorkspaceToUi(); RefreshControls();
         StatusLabel.Text = "Limpieza completada. Forja sigue abierta; podés preparar la IA de nuevo.";
         DetailLabel.Text = settingsDeleted ? "Se restauraron los ajustes iniciales. Los archivos de tus proyectos se conservaron." : "Se eliminaron solo las categorías confirmadas.";
     }
@@ -599,6 +675,9 @@ public partial class MainWindow : Window
     private async void Start_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async ct =>
     {
         hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
+        if (settings.Mode == AppMode.Visual)
+        { await runtime.StopAsync(); await visualPane.StartAsync(ct); UpdateConfigurationSummary(); return; }
+        await visualPane.StopAsync();
         ApplyHardwareProfile();
         var gpu = hardware.SelectedGpu!;
         GpuProfiles.ValidateBackend(settings);
@@ -642,10 +721,10 @@ public partial class MainWindow : Window
             await runtime.StopAsync(); throw new InvalidOperationException("Falta Microsoft Edge WebView2 Runtime. Esta versión de desarrollo requiere instalarlo desde Microsoft; el instalador final lo preparará automáticamente.");
         }
     }
-    private async void Stop_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async _ => { await runtime.StopAsync(); Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible; });
+    private async void Stop_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async _ => { await runtime.StopAsync(); await visualPane.StopAsync(); Chat.Visibility = Visibility.Collapsed; ApplyWorkspaceToUi(); StatusLabel.Text = "IA detenida. Tus archivos y creaciones siguen guardados."; });
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        if (preparing) { preparationPaused = true; StatusLabel.Text = "Pausando y guardando el progreso..."; }
+        if (preparing || visualPane.IsPreparing) { preparationPaused = true; StatusLabel.Text = "Pausando y guardando el progreso..."; }
         operation?.Cancel();
     }
     private void Logs_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, Arguments = '"' + paths.Logs + '"' });
@@ -712,6 +791,7 @@ public partial class MainWindow : Window
         {
             if (operationFinished is { } pending) await pending.Task;
             await runtime.DisposeAsync();
+            await visualPane.DisposeAsync();
         }
         catch (Exception ex)
         {

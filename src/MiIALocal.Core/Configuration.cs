@@ -6,10 +6,11 @@ public sealed record DownloadAsset(string Id, string Name, string Url, string Sh
 
 /// <summary>Motor con el que se atiende la inferencia. Cada modo usa su propio binario, modelo y argumentos.</summary>
 public enum EngineMode { KvMem, NInfer5080 }
+public enum AppMode { Programming, Visual }
 
 public static class ReleaseProfile
 {
-    public const string Version = "0.2.4-dev";
+    public const string Version = "0.3.0-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;
@@ -36,6 +37,8 @@ public static class ReleaseProfile
 
 public sealed class AppSettings
 {
+    public AppMode Mode { get; set; }
+    public VisualSettings Visual { get; set; } = new();
     public int ContextTokens { get; set; } = ReleaseProfile.Context;
     public EngineTuning Tuning { get; set; } = new();
     public bool UseRecommendedProfile { get; set; } = true;
@@ -70,6 +73,13 @@ public sealed class AppPaths
     public string Runtime => Path.Combine(Root, "runtime");
     public string Downloads => Path.Combine(Root, "downloads");
     public string Logs => Path.Combine(Root, "logs");
+    public string VisualRoot => Path.Combine(Root, "visual");
+    public string VisualModels => Path.Combine(VisualRoot, "models");
+    public string VisualInputs => Path.Combine(VisualRoot, "inputs");
+    public string VisualOutputs => Path.Combine(VisualRoot, "creations");
+    public string VisualJobs => Path.Combine(VisualRoot, "jobs");
+    public string ComfyRoot => Path.Combine(Runtime, "comfy", "ComfyUI_windows_portable");
+    public string ComfyPython => Path.Combine(ComfyRoot, "python_embeded", "python.exe");
     public string SettingsFile => Path.Combine(Root, "settings.json");
     public string? SettingsRecoveryMessage { get; private set; }
     public string AgentConfig => Path.Combine(Root, "opencode.json");
@@ -105,6 +115,9 @@ public sealed class AppPaths
             // Preserve the old backend and manual tuning when loading a pre-selector installation.
             if (!document.RootElement.EnumerateObject().Any(p => p.Name.Equals(nameof(AppSettings.EngineMode), StringComparison.OrdinalIgnoreCase))) settings.EngineMode = EngineMode.KvMem;
             settings.Tuning ??= new();
+            settings.Visual ??= new();
+            if (!Enum.IsDefined(settings.Mode)) settings.Mode = AppMode.Programming;
+            settings.Visual.Normalize();
             settings.NativeTuning ??= new();
             if (!Enum.IsDefined(settings.EngineMode)) throw new InvalidDataException("Motor desconocido.");
             if (settings.EngineMode == EngineMode.NInfer5080)

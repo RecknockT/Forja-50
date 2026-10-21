@@ -4,7 +4,7 @@
 
 Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. RTX 5070 Ti y RTX 5080 de escritorio (16 GB), o RTX 3090 (24 GB), con 32 GB de RAM.
 
-La versión 0.2.4 de desarrollo incorpora un apartado de GitHub con autorización en el navegador y sesión cifrada independiente, paquetes renombrados a Forja-50, limpieza sin cerrar la aplicación y confirmación al salir. Conserva el perfil RTX 3090 con KVMem sm86 y los perfiles RTX 50 con el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger. El instalador y el portable no contienen pesos ni compiladores: el programa descarga motor, herramientas y modelo después de instalar.
+La versión 0.3.0 de desarrollo incorpora dos modos independientes: Programación (Qwen + OpenCode y Git) e Imágenes y animación (ComfyUI administrado, FLUX.2 Klein 4B y Wan 2.2 5B opcional). El modo visual no necesita descargar el Qwen de programación ni elegir un repositorio. Incluye edición con la imagen seleccionada, historial, exportación PNG/MP4/GIF y descargas verificadas. La inferencia visual está pendiente de validación física; no se anuncian tiempos ni consumo garantizados. Setup y portable no contienen pesos de IA.
 
 **Administrar almacenamiento** permite eliminar modelos, componentes, caché, conversaciones y ajustes, mostrando rutas y espacio y pidiendo confirmación. El desinstalador ofrece la misma limpieza opcional; conservar datos es la opción inicial. Los archivos importados, los proyectos y los repositorios Git quedan protegidos. Ver [limpieza y desinstalación](docs/PRIMEROS-PASOS.md#administrar-almacenamiento-y-desinstalar).
 
