@@ -1,6 +1,22 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.2.1.
+21 de octubre de 2026 · desarrollo 0.2.2.
+
+## RTX 3090 y Setup unificado
+
+- Tercer perfil de escritorio: RTX 3090 de 24 GB, KVMem sm86 y Swift. Contexto inicial 128K, historial GPU seleccionado 96K, reserva 16K, caché RAM 8 GiB y prefill 512. Alternativas 64K/32K con presupuestos adecuados al contexto. Los perfiles RTX 50 conservan sus valores nativos iniciales.
+- Descarga del motor RTX 30 fijada por tamaño y SHA-256, con ruta separada del paquete RTX 50. Detección, selección del paquete, preparación y arranque protegen la compatibilidad. El selector nativo sm120a queda deshabilitado para la 3090.
+- 55 comprobaciones del núcleo y 9 de ventanas/configuración aprobadas: incluyen los tres perfiles, conservación de ajustes, cambio de contexto y rechazo del motor incompatible. Compilación sin advertencias ni errores. No se cargaron pesos ni se inició inferencia.
+- ZIP RTX 30 descargado y verificado contra su SHA-256/tamaño publicados. BUILD-INFO indica arquitectura 86, dependencias y validación física pendiente. Ruta interna verificada; `ninfer-kvmem-server.exe --help` aprobado localmente sin modelo.
+- Setup y portable 0.2.2 generados localmente. Setup agrupa carpeta, acceso al escritorio (marcado de inicio) y abrir al terminar. Se omiten las páginas separadas de tareas, carpeta del menú Inicio y resumen; el acceso al menú Inicio permanece automático. El instalador no descarga pesos ni inicia IA por sí mismo.
+- Pantalla del Setup comprobada visualmente: carpeta, ambas casillas marcadas y botón Instalar en una sola vista. El Setup se canceló antes de instalar.
+- Perfil 3090 pendiente de validación física y de uso prolongado. Los presupuestos son valores iniciales del producto, no mediciones de consumo ni garantía de rendimiento. Ver [perfil 3090](RTX3090.md).
+
+## Estado posterior de la PC y revisión técnica
+
+Por nuevo pedido del usuario se retiraron la instalación manual, sus datos y el instalador antiguo descargado. La comprobación final confirmó que no quedaban las carpetas de aplicación/datos ni procesos propios, y que el checkout seguía presente. No reinstalar por ahora. Las referencias históricas a conservar la instalación manual describen pruebas anteriores.
+
+La [revisión del 21 de octubre](REVISION-2026-10-21.md) compara la base actual con otros motores Windows, modelos de menor tamaño y versiones posteriores de dependencias. Es investigación documental; no se cambiaron perfiles ni se probaron nuevos motores en la GPU.
 
 ## Limpieza y desinstalación
 

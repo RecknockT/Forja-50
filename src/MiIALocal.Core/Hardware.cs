@@ -6,13 +6,15 @@ namespace MiIALocal.Core;
 
 public sealed record GpuInfo(int Index, string Name, long TotalMiB, long FreeMiB, string Driver)
 {
-    public bool IsSupported => Name is "NVIDIA GeForce RTX 5080" or "NVIDIA GeForce RTX 5070 Ti";
-    public string Profile => Name switch { "NVIDIA GeForce RTX 5080" => "RTX 5080 · escritorio", "NVIDIA GeForce RTX 5070 Ti" => "RTX 5070 Ti · escritorio", _ => Name };
+    public bool IsRtx3090 => Name == "NVIDIA GeForce RTX 3090";
+    public bool IsSupported => Name is "NVIDIA GeForce RTX 5080" or "NVIDIA GeForce RTX 5070 Ti" or "NVIDIA GeForce RTX 3090";
+    public bool HasRequiredMemory => TotalMiB >= (IsRtx3090 ? 23000 : 15000);
+    public string Profile => Name switch { "NVIDIA GeForce RTX 5080" => "RTX 5080 · escritorio · 16 GB", "NVIDIA GeForce RTX 5070 Ti" => "RTX 5070 Ti · escritorio · 16 GB", "NVIDIA GeForce RTX 3090" => "RTX 3090 · escritorio · 24 GB", _ => Name };
 }
 public sealed record HardwareReport(IReadOnlyList<GpuInfo> Gpus, double RamGiB)
 {
-    public GpuInfo? SelectedGpu => Gpus.FirstOrDefault(g => g.IsSupported && g.TotalMiB >= 15000);
-    public string? Problem => SelectedGpu is null ? "Esta versión requiere una RTX 5070 Ti o RTX 5080 de escritorio con 16 GB. No admite variantes Laptop ni otras placas." : RamGiB < 30 ? "Este perfil requiere 32 GB de RAM instalados." : null;
+    public GpuInfo? SelectedGpu => Gpus.FirstOrDefault(g => g.IsSupported && g.HasRequiredMemory);
+    public string? Problem => SelectedGpu is null ? "Requiere RTX 5070 Ti / 5080 de escritorio (16 GB) o RTX 3090 (24 GB). No admite variantes Laptop ni otras placas." : RamGiB < 30 ? "Este perfil requiere 32 GB de RAM instalados." : null;
 }
 
 public static class HardwareDetector

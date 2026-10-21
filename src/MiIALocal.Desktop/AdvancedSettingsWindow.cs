@@ -11,7 +11,9 @@ namespace MiIALocal.Desktop;
 public sealed class AdvancedSettingsWindow : Window
 {
     private readonly Dictionary<PropertyInfo, TextBox> fields = [];
-    private readonly ComboBox context = new() { ItemsSource = new[] { "64K · predeterminado", "32K · alternativa" }, Margin = new(0, 5, 0, 12), Padding = new(8) };
+    private readonly ComboBox context = new() { Margin = new(0, 5, 0, 12), Padding = new(8) };
+    private readonly int[] contextOptions;
+    private readonly GpuPreset? preset;
     private readonly ComboBox kv = new() { ItemsSource = EngineTuning.KvTypes, Padding = new(8) };
     private readonly TextBlock error = new() { Foreground = Brush("#FFB4A9"), Margin = new(0, 12, 0, 8) };
     public EngineTuning Result { get; private set; }
@@ -19,6 +21,9 @@ public sealed class AdvancedSettingsWindow : Window
     private static SolidColorBrush Brush(string color) => (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
     public AdvancedSettingsWindow(AppSettings current)
     {
+        contextOptions = GpuProfiles.KvMemContexts(current).Reverse().ToArray();
+        context.ItemsSource = contextOptions.Select(tokens => $"{tokens / 1024}K" + (tokens == (GpuProfiles.Is3090(current) ? 131072 : 65536) ? " · inicial" : " · alternativa")).ToArray();
+        if (GpuProfiles.Is3090(current)) preset = GpuProfiles.For(new(0, "NVIDIA GeForce RTX 3090", 24576, 24576, ""));
         NativeWindowTheme.Attach(this);
         Title = "Configuración avanzada"; Width = 760; Height = 790; MinWidth = 620; MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = Brush("#101820"); Foreground = Brush("#E2ECF1"); FontFamily = new("Segoe UI");
@@ -31,7 +36,7 @@ public sealed class AdvancedSettingsWindow : Window
         var footer = new StackPanel(); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
         footer.Children.Add(error);
         var buttons = new WrapPanel(); footer.Children.Add(buttons);
-        var restore = new Button { Content = "Restaurar recomendada" }; restore.Click += (_, _) => Fill(new(), 65536); buttons.Children.Add(restore);
+        var restore = new Button { Content = "Restaurar recomendada" }; restore.Click += (_, _) => Fill(preset?.CreateTuning() ?? new(), preset?.ContextTokens ?? 65536); buttons.Children.Add(restore);
         var save = new Button { Content = "Guardar", Background = Brush("#087F70"), Foreground = Brushes.White }; save.Click += (_, _) => Save(); buttons.Children.Add(save);
         var cancel = new Button { Content = "Cancelar", IsCancel = true }; buttons.Children.Add(cancel);
         var content = new StackPanel(); root.Children.Add(new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
@@ -40,7 +45,7 @@ public sealed class AdvancedSettingsWindow : Window
         {
             (nameof(EngineTuning.HistoryTokens), "Historial seleccionado en GPU", "tokens · múltiplo de 64"),
             (nameof(EngineTuning.GenerationReserve), "Reserva de generación GPU", "tokens · múltiplo de 64"),
-            (nameof(EngineTuning.HostCacheMiB), "Caché KV en RAM", "MiB · auto = 4096 con 64K / 2048 con 32K"),
+            (nameof(EngineTuning.HostCacheMiB), "Caché KV en RAM", "MiB · auto: 8192 con 128K / 4096 con 64K / 2048 con 32K"),
             (nameof(EngineTuning.SinkTokens), "Retener inicio del historial", "tokens · múltiplo de 64"),
             (nameof(EngineTuning.RecentTokens), "Retener tokens recientes", "tokens · mínimo 64"),
             (nameof(EngineTuning.PrefillChunk), "Bloque de procesamiento inicial", "tokens · múltiplo de 128"),
@@ -67,7 +72,7 @@ public sealed class AdvancedSettingsWindow : Window
     }
     private void Fill(EngineTuning tuning, int tokens)
     {
-        context.SelectedIndex = tokens == 65536 ? 0 : 1; kv.SelectedItem = tuning.KvType;
+        context.SelectedIndex = Array.IndexOf(contextOptions, tokens); kv.SelectedItem = tuning.KvType;
         foreach (var (property, input) in fields) input.Text = Convert.ToString(property.GetValue(tuning), CultureInfo.InvariantCulture) ?? "auto";
         if (tuning.HostCacheMiB is null) fields[typeof(EngineTuning).GetProperty(nameof(EngineTuning.HostCacheMiB))!].Text = "auto";
         error.Text = "";
@@ -89,7 +94,8 @@ public sealed class AdvancedSettingsWindow : Window
                 else { if (!int.TryParse(text, out var number)) throw new InvalidDataException("Revisá el entero de " + property.Name + "."); value = number; }
                 property.SetValue(next, value);
             }
-            var tokens = context.SelectedIndex == 0 ? 65536 : 32768; next.Validate(tokens);
+            if (context.SelectedIndex < 0) throw new InvalidDataException("Elegí un contexto compatible con esta placa.");
+            var tokens = contextOptions[context.SelectedIndex]; next.Validate(tokens);
             Result = next; ContextTokens = tokens; DialogResult = true;
         }
         catch (Exception ex) when (ex is InvalidDataException or ArgumentException) { error.Text = ex.Message; }

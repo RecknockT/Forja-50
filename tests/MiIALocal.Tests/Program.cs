@@ -100,16 +100,19 @@ DownloadAsset Asset(byte[] bytes) => new("test", "Prueba", "https://example.inva
 
 await DownloadTests.RunAsync(root, Assert, Test);
 await StorageCleanupTests.RunAsync(root, Assert, Test);
+await Rtx3090Tests.RunAsync(root, Assert, Test);
 
-await Test("Hardware: admitir solo las dos placas de escritorio", () =>
+await Test("Hardware: admitir solo las tres placas de escritorio con su memoria", () =>
 {
-    var names = new[] { "NVIDIA GeForce RTX 5080", "NVIDIA GeForce RTX 5070 Ti", "NVIDIA GeForce RTX 5080 Laptop GPU", "NVIDIA GeForce RTX 5070 Ti Laptop GPU", "NVIDIA GeForce RTX 5070", "NVIDIA GeForce RTX 5090" };
-    var rows = names.Select((n, i) => $"{i}, {n}, 16303, 14000, 617.42");
+    var names = new[] { "NVIDIA GeForce RTX 5080", "NVIDIA GeForce RTX 5070 Ti", "NVIDIA GeForce RTX 5080 Laptop GPU", "NVIDIA GeForce RTX 5070 Ti Laptop GPU", "NVIDIA GeForce RTX 5070", "NVIDIA GeForce RTX 5090", "NVIDIA GeForce RTX 3090", "NVIDIA GeForce RTX 3090 Ti" };
+    var rows = names.Select((n, i) => $"{i}, {n}, {(i >= 6 ? 24576 : 16303)}, 14000, 617.42");
     var gpus = HardwareDetector.ParseGpus(string.Join('\n', rows));
-    Assert(gpus.Count == 6 && gpus.Count(g => g.IsSupported) == 2, "Se admitió hardware fuera del alcance.");
+    Assert(gpus.Count == 8 && gpus.Count(g => g.IsSupported) == 3, "Se admitió hardware fuera del alcance.");
     Assert(new HardwareReport(gpus, 31.2).Problem is null, "RAM reservada de un equipo de 32 GB no debe bloquear.");
     Assert(new HardwareReport(gpus, 15.8).Problem is not null, "No se detectó RAM insuficiente.");
     Assert(new HardwareReport([new(0, names[0], 8000, 7000, "617.42")], 32).Problem is not null, "No se detectó VRAM insuficiente.");
+    Assert(new HardwareReport([new(2, names[6], 16384, 15000, "test")], 32).Problem is not null, "Se aceptó una 3090 sin 24 GB.");
+    Assert(new HardwareReport([gpus[6]], 32).SelectedGpu?.Index == 6, "No se seleccionó la 3090.");
     return Task.CompletedTask;
 });
 await Test("ZIP: rechazar traversal y rutas absolutas", async () =>

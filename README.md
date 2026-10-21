@@ -2,25 +2,29 @@
 
 # Forja 50
 
-Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. Solo RTX 5070 Ti y RTX 5080 de escritorio, 16 GB de VRAM y 32 GB de RAM.
+Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. RTX 5070 Ti y RTX 5080 de escritorio (16 GB), o RTX 3090 (24 GB), con 32 GB de RAM.
 
-La versión 0.2.1 de desarrollo incorpora el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger y su modelo oficial Qwen3.8-27B. El instalador y el portable no contienen pesos ni compiladores: el programa descarga el motor preparado, herramientas y modelo después de instalar.
+La versión 0.2.2 de desarrollo agrega un perfil RTX 3090 con KVMem para Ampere/sm86. Las RTX 50 conservan el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger y su modelo oficial Qwen3.8-27B. El instalador y el portable no contienen pesos ni compiladores: el programa descarga el motor preparado, herramientas y modelo después de instalar.
 
 **Administrar almacenamiento** permite eliminar modelos, componentes, caché, conversaciones y ajustes, mostrando rutas y espacio y pidiendo confirmación. El desinstalador ofrece la misma limpieza opcional; conservar datos es la opción inicial. Los archivos importados, los proyectos y los repositorios Git quedan protegidos. Ver [limpieza y desinstalación](docs/PRIMEROS-PASOS.md#administrar-almacenamiento-y-desinstalar).
 
 ## Perfiles por placa
 
-| Ajuste inicial | RTX 5080 | RTX 5070 Ti |
-| --- | --- | --- |
-| Contexto / KV completos | 65.536 | 65.536 |
-| Prefill automático | 896 | 512 |
-| Caché KV | Q4 | Q4 |
-| MTP | 3 borradores | 3 borradores |
-| Embeddings | En RAM | En RAM |
-| Visión inicial | Desactivada | Desactivada |
-| Prueba de inferencia de este perfil en Forja | Pendiente | Pendiente |
+| Ajuste inicial | RTX 5080 | RTX 5070 Ti | RTX 3090 |
+| --- | --- | --- | --- |
+| Motor | NInfer nativo sm120a | NInfer nativo sm120a | KVMem 0.18.0 sm86 |
+| Modelo | Qwen de Todd · 16,5 GB | Qwen de Todd · 16,5 GB | Qwen Swift IQ3_S · 12,8 GB |
+| Contexto lógico | 65.536 | 65.536 | 131.072 |
+| Historial / KV en GPU | KV completo | KV completo | 98.304 seleccionados + 16.384 de reserva |
+| Prefill automático | 896 | 512 | 512 |
+| Caché KV | Q4 | Q4 | rk8v4 + hasta 8 GiB en RAM |
+| MTP | 3 borradores | 3 borradores | 3 borradores |
+| Visión inicial | Desactivada | Desactivada | Desactivada |
+| Prueba de inferencia de este perfil en Forja | Pendiente | Pendiente | Pendiente |
 
 Los parámetros son puntos de partida para probar, no una afirmación de rendimiento óptimo. Los ajustes manuales de configuración avanzada se conservan. 128K queda marcado como experimental en Windows nativo. El backend anterior KVMem/Swift permanece como alternativa y conserva sus archivos.
+
+En la 3090 se selecciona KVMem automáticamente y se deshabilita el motor exclusivo de RTX 50. Sus 128K emplean recuperación de historial; no equivalen a atender todos los tokens a la vez en GPU. Hay alternativas de 64K y 32K, con presupuestos menores. Ver [perfil y límites de la 3090](docs/RTX3090.md).
 
 El [análisis de experiencias en Windows](docs/NINFER-WINDOWS.md) documenta fuentes, versiones, recetas, resultados de terceros y límites de validación. Los resultados de WSL2 no se atribuyen al port nativo.
 

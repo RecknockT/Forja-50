@@ -14,9 +14,14 @@ internal static class Integration
         try
         {
             var settings = paths.LoadSettings();
+            settings.EngineMode = EngineMode.KvMem;
+            var hardware = await HardwareDetector.DetectAsync(default);
+            if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
+            var gpu = hardware.SelectedGpu!;
+            GpuProfiles.Apply(settings, gpu);
             settings.ImportedModel = Path.Combine(reference, "models", ReleaseProfile.Model.FileName);
             settings.LicenseAccepted = true; // Developer test uses the already installed reference model.
-            foreach (var asset in new[] { ReleaseProfile.Engine, ReleaseProfile.Agent })
+            foreach (var asset in new[] { ReleaseProfile.KvMemEngineFor(settings), ReleaseProfile.Agent })
             {
                 var original = Path.Combine(reference, "downloads", asset.FileName);
                 var destination = Path.Combine(paths.Downloads, asset.FileName);
@@ -38,9 +43,6 @@ internal static class Integration
                 await Run(git, ["commit", "-m", "Preparar prueba aislada"], project);
             }
             if (args.Contains("--prepare-only")) { Console.WriteLine("PASS componentes y modelo preparados para la aplicación"); return 0; }
-            var hardware = await HardwareDetector.DetectAsync(default);
-            if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
-            var gpu = hardware.SelectedGpu!;
             if (gpu.FreeMiB < 13000) throw new InvalidOperationException("Detené temporalmente la instalación anterior para realizar la prueba de GPU; la prueba no la cerrará por su cuenta.");
             var uri = await supervisor.StartAsync(settings, gpu, project, default);
             Console.WriteLine("PASS motor y agente propios listos: " + uri);

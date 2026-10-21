@@ -26,6 +26,7 @@ public static class Ninfer5080Profile
     public static NativeGpuPreset For(GpuInfo gpu)
     {
         _ = GpuProfiles.For(gpu);
+        if (gpu.IsRtx3090) throw new InvalidDataException("El motor NInfer-5080 no admite RTX 3090. Usá KVMem para RTX 30.");
         return gpu.Name == "NVIDIA GeForce RTX 5080"
             ? new("native-rtx5080", "RTX 5080 · Windows nativo", 896, 14000)
             : new("native-rtx5070ti", "RTX 5070 Ti · Windows nativo", 512, 14000);

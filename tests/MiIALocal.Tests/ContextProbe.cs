@@ -17,13 +17,16 @@ internal static class ContextProbe
             var hardware = await HardwareDetector.DetectAsync(default);
             if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
             var gpu = hardware.SelectedGpu!;
+            settings.EngineMode = EngineMode.KvMem;
+            GpuProfiles.Apply(settings, gpu);
             if (gpu.FreeMiB < 13000) throw new InvalidOperationException("La GPU no tiene memoria libre para esta prueba.");
             if (!await VerifiedDownloader.MatchesAsync(paths.ModelPath(settings), ReleaseProfile.Model, default)) throw new InvalidDataException("Modelo incorrecto.");
             using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(8) };
             var key = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
             var port = RuntimeSupervisor.FreePort();
             var clock = Stopwatch.StartNew();
-            await using var engine = OwnedProcess.Start(paths.EngineExe, RuntimeSupervisor.EngineArguments(paths.ModelPath(settings), gpu.Index, port, key, 65536), Path.GetDirectoryName(paths.EngineExe)!, Path.Combine(paths.Logs, "context64-model"));
+            var enginePath = paths.KvMemEngineExe(settings);
+            await using var engine = OwnedProcess.Start(enginePath, RuntimeSupervisor.EngineArguments(paths.ModelPath(settings), gpu.Index, port, key, 65536, GpuProfiles.For(gpu).CreateTuning(65536)), Path.GetDirectoryName(enginePath)!, Path.Combine(paths.Logs, "context64-model"));
             await engine.WaitForReadyAsync(client, new($"http://127.0.0.1:{port}/health"), "Bearer " + key, TimeSpan.FromMinutes(4), default);
             var loadSeconds = clock.Elapsed.TotalSeconds;
             Console.WriteLine($"PASS motor 64K listo en {loadSeconds:0.0}s");

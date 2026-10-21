@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "vramGiB": 24,
+  "ramInstalledGiB": 32,
+  "engine": "KVMem 0.18.0",
+  "architecture": "sm86",
+  "model": "swift15_iq3s_mtp.ninfer",
+  "contextTokens": 131072,
+  "historyTokens": 98304,
+  "generationReserve": 16384,
+  "hostCacheMiB": 8192,
+  "prefillChunk": 512,
+  "kvType": "rk8v4",
+  "draftTokens": 3,
+  "vision": false,
+  "physicalValidation": "pending",
+  "notes": "Logical KVMem context; not full attention over all 128K tokens in GPU"
+}

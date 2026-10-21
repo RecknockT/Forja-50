@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "status": "product-plan-not-a-tested-installer",
   "releaseRequiresAllProfilesValidated": true,
-  "scope": "desktop-only-rtx5070ti-or-rtx5080",
+  "scope": "desktop-rtx3090-or-rtx5070ti-or-rtx5080",
   "allowUnlistedHardware": false,
   "futureHardwareExpansionPlanned": false,
   "requiredProfiles": [
@@ -28,7 +28,26 @@
       "prototypeValidation": "pending-on-physical-hardware",
       "cleanInstallerValidation": "pending",
       "externalEvidence": "https://github.com/Ryan-gsq/ninfer-16g-5070ti-5080-5090-qwen3.8-27b-gsq-rco/blob/main/docs/rtx-5070ti-windows.en.md"
+    },
+    {
+      "id": "windows-rtx3090-24gb-ram32-qwen27b",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "variant": "desktop",
+      "vramGiB": 24,
+      "ramInstalledGiB": 32,
+      "referenceFile": "perfil-rtx3090.json",
+      "prototypeValidation": "pending-on-physical-hardware",
+      "cleanInstallerValidation": "pending"
     }
   ],
-  "notQualifiedByThisPlan": ["all laptops", "RTX 5070", "RTX 5070 Ti Laptop", "RTX 5080 Laptop", "all other GPUs", "AMD", "multi-GPU", "other operating systems"]
+  "notQualifiedByThisPlan": [
+    "all laptops",
+    "RTX 5070",
+    "RTX 5070 Ti Laptop",
+    "RTX 5080 Laptop",
+    "all other GPUs",
+    "AMD",
+    "multi-GPU",
+    "other operating systems"
+  ]
 }

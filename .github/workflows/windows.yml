@@ -85,11 +85,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_NOTES: |
-            Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti y RTX 5080 de escritorio de 16 GB, con 32 GB de RAM.
+            Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
             Incluye Setup y ZIP portable, tema oscuro, configuracion avanzada, perfiles automaticos para cada placa y actualizador. Motor NInfer nativo Windows basado en el fork de Todd Ballinger; modelo oficial Qwen3.8-27B de 16,5 GB descargado desde el programa. No incluye pesos en el instalador.
 
             Descarga continua a maxima velocidad disponible: 16 conexiones, fragmentos persistentes, pausa y reanudacion, reintentos, velocidad reciente y tiempo estimado. Contexto inicial 64K; prefill 896 en 5080 y 512 en 5070 Ti. La compilacion comprueba el cierre inicial, solicitudes repetidas y cancelacion de operaciones al cerrar.
+
+            La RTX 3090 selecciona automaticamente KVMem sm86 con Swift: 128K logicos, 96K de historial seleccionado en GPU, 16K de reserva y hasta 8 GiB de cache en RAM; prefill 512. Alternativas 64K/32K. El motor sm120a se deshabilita en esta placa. Perfil pendiente de prueba fisica, sin garantia de consumo/rendimiento.
+
+            Setup agrupa carpeta de instalacion, acceso directo al escritorio (marcado por defecto) y abrir al terminar en una sola pantalla. El modelo se descarga despues desde Forja.
 
             Administrar almacenamiento permite elegir modelos, componentes, cache, conversaciones y ajustes, con rutas, espacio y confirmacion. El desinstalador ofrece abrir esa misma limpieza; conservar datos es la opcion inicial y la desinstalacion silenciosa los conserva. Los archivos importados, enlaces y repositorios Git quedan protegidos.
 

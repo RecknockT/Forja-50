@@ -9,7 +9,7 @@ public enum EngineMode { KvMem, NInfer5080 }
 
 public static class ReleaseProfile
 {
-    public const string Version = "0.2.1-dev";
+    public const string Version = "0.2.2-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;
@@ -17,12 +17,19 @@ public static class ReleaseProfile
     // Artefacto oficial del proyecto ninfer-5080 (Todd Ballinger) en Hugging Face, fijado a una revisión inmutable.
     public static readonly DownloadAsset NinferModel = new("ninfer5080-model", "Modelo Qwen3.8-27B · NInfer-5080 (16,5 GB)", "https://huggingface.co/ninfer-5080/Qwen3.8-27B-RTX5080/resolve/e23a3301eed611ac3196e3389c3d572bc5ddeb9a/qwen3_8_27b.ninfer", "c4a7e9ab593a7f42d58208fa0065d67a82d61921107686cc9f6ed1ec6b050e21", "qwen3_8_27b.ninfer", 16461267456);
     public static readonly DownloadAsset Engine = new("ninfer", "Motor NInfer / KVMem", "https://github.com/kvmem/kvmem/releases/download/v0.18.0/kvmem-v0.18.0-ninfer-windows-rtx50-sm120a.zip", "f893dc9053cb27ef8cdbc32687c6bb29346d5829d5eb2272a58ddef7b6dbdf7d", "kvmem-0.18.0-rtx50.zip", 900767487);
+    public static readonly DownloadAsset Engine3090 = new("ninfer-rtx30", "Motor NInfer / KVMem · RTX 3090", "https://github.com/kvmem/kvmem/releases/download/v0.18.0/kvmem-v0.18.0-ninfer-windows-rtx30-sm86.zip", "1f4bab96cde5f5a80eb7d46f074cca5f8a9294121ed53570b0c422a05eb6e301", "kvmem-0.18.0-rtx30.zip", 1018841562);
     public static readonly DownloadAsset NativeEngine = new("ninfer5080", "Motor NInfer nativo Windows", "https://github.com/RecknockT/Mi-IA-Local/releases/download/ninfer-native-aee9106/ninfer-native-windows-sm120a-aee9106.zip", "db7b60c45f880dfdfed92a964270759b02ffb3b9e94817127593d49d1ff80524", "ninfer-native-windows-sm120a-aee9106.zip", 243616338);
     public static readonly DownloadAsset Agent = new("opencode", "Agente OpenCode", "https://github.com/anomalyco/opencode/releases/download/v1.19.3/opencode-windows-x64.zip", "e4ce9117f55fc068414513789f8c7d1049f855d7518bb4e350b9170a3a20d8c3", "opencode-1.19.3.zip", 62204138);
     public static readonly DownloadAsset Git = new("git", "Git portable", "https://github.com/git-for-windows/git/releases/download/v2.53.0.windows.3/MinGit-2.53.0.3-64-bit.zip", "0d7c85a26e45668b35d0d0aeb763289376cfc039e55e0938a617ed0dfa32e433", "mingit-2.53.0.3.zip", 41300221);
     public static readonly DownloadAsset Node = new("node", "Node y npm portables", "https://nodejs.org/dist/v24.19.0/node-v24.19.0-win-x64.zip", "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73", "node-24.19.0.zip");
     public static readonly DownloadAsset[] Components = [Engine, Agent, Git, Node];
     public static DownloadAsset[] ComponentsFor(EngineMode mode) => mode == EngineMode.NInfer5080 ? [NativeEngine, Agent, Git, Node] : Components;
+    public static DownloadAsset KvMemEngineFor(AppSettings settings) => settings.HardwareProfileId == GpuProfiles.Rtx3090Id ? Engine3090 : Engine;
+    public static DownloadAsset[] ComponentsFor(AppSettings settings)
+    {
+        GpuProfiles.ValidateBackend(settings);
+        return settings.EngineMode == EngineMode.NInfer5080 ? ComponentsFor(settings.EngineMode) : [KvMemEngineFor(settings), Agent, Git, Node];
+    }
     public static DownloadAsset ModelFor(EngineMode mode) => mode == EngineMode.NInfer5080 ? NinferModel : Model;
 }
 
@@ -51,7 +58,8 @@ public sealed record ContextProfile(int Tokens, int HostCacheMiB)
     {
         32768 => new(32768, 2048),
         65536 => new(65536, 4096),
-        _ => throw new InvalidDataException("Contexto no admitido. Elegí 32K o 64K experimental.")
+        131072 => new(131072, 8192),
+        _ => throw new InvalidDataException("Contexto KVMem no admitido. Elegí 32K, 64K o 128K según la placa.")
     };
 }
 
@@ -65,6 +73,8 @@ public sealed class AppPaths
     public string? SettingsRecoveryMessage { get; private set; }
     public string AgentConfig => Path.Combine(Root, "opencode.json");
     public string EngineExe => Path.Combine(Runtime, "ninfer", "kvmem-v0.18.0-ninfer-windows-rtx50-sm120a", "workers", "ninfer", "ninfer-kvmem-server.exe");
+    public string KvMemEngineExe(AppSettings settings) => ReleaseProfile.KvMemEngineFor(settings) == ReleaseProfile.Engine3090
+        ? Path.Combine(Runtime, ReleaseProfile.Engine3090.Id, "kvmem-v0.18.0-ninfer-windows-rtx30-sm86", "workers", "ninfer", "ninfer-kvmem-server.exe") : EngineExe;
     public string AgentExe => Path.Combine(Runtime, "opencode", "opencode.exe");
     public string GitExe => Path.Combine(Runtime, "git", "cmd", "git.exe");
     public string NodeExe => Path.Combine(Runtime, "node", "node-v24.19.0-win-x64", "node.exe");

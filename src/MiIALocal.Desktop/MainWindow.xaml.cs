@@ -34,6 +34,11 @@ public partial class MainWindow : Window
         UpdateProject(); ApplyModeToUi();
         Loaded += async (_, _) =>
         {
+            if (App.Argument("--smoke-gpu-profiles") is { } profileReport && App.Argument("--data-root") is not null)
+            {
+                SmokeGpuProfiles(profileReport);
+                exiting = true; Close(); return;
+            }
             await InspectHardwareAsync();
             if (App.Argument("--smoke-browser-cleanup") is { } browserReport && App.Argument("--data-root") is not null)
             {
@@ -155,6 +160,39 @@ public partial class MainWindow : Window
         }
         finally { await runtime.StopAsync(); await runtime.DisposeAsync(); healthTimer.Stop(); Chat.Dispose(); http.Dispose(); exiting = true; Close(); }
     }
+    private void SmokeGpuProfiles(string report)
+    {
+        try
+        {
+            foreach (var (name, memory, prefill) in new[] { ("NVIDIA GeForce RTX 5080", 16303, 896), ("NVIDIA GeForce RTX 5070 Ti", 16303, 512), ("NVIDIA GeForce RTX 3090", 24576, 512) })
+            {
+                settings.EngineMode = EngineMode.NInfer5080; settings.UseRecommendedProfile = true; settings.ContextTokens = 65536;
+                hardware = new([new(0, name, memory, memory, "fixture")], 32);
+                ApplyHardwareProfile(); RefreshControls();
+                if (hardware.Problem is not null || !ConfigurationSummary.Text.Contains(hardware.SelectedGpu!.Profile)) throw new InvalidDataException("Falta el perfil detectado.");
+                if (name.EndsWith("3090"))
+                {
+                    if (ModeChoice.SelectedIndex != 0 || ((System.Windows.Controls.ComboBoxItem)ModeChoice.Items[1]).IsEnabled || settings.ContextTokens != 131072 || ContextChoice.Items.Count != 3)
+                        throw new InvalidDataException("La 3090 no eligió KVMem/128K o permite el motor RTX 50.");
+                    ModeChoice.SelectedIndex = 1;
+                    if (settings.EngineMode != EngineMode.KvMem || ModeChoice.SelectedIndex != 0) throw new InvalidDataException("Se aceptó un motor incompatible.");
+                    foreach (var tokens in new[] { 65536, 32768, 131072 })
+                    {
+                        ContextChoice.SelectedIndex = Array.IndexOf(ContextOptions, tokens);
+                        if (settings.ContextTokens != tokens) throw new InvalidDataException("No se pudo cambiar el contexto de la 3090.");
+                        settings.Tuning.Validate(tokens);
+                    }
+                    if (settings.Tuning.PrefillChunk != prefill || settings.Tuning.HistoryTokens != 98304) throw new InvalidDataException("Se perdió el presupuesto de la 3090.");
+                    var advanced = new AdvancedSettingsWindow(settings);
+                    if (advanced.ContextTokens != 131072) throw new InvalidDataException("La configuración avanzada perdió 128K.");
+                    advanced.Close();
+                }
+                else if (ModeChoice.SelectedIndex != 1 || settings.ContextTokens != 65536 || !ConfigurationSummary.Text.Contains($"Prefill: {prefill}")) throw new InvalidDataException("Regresión en el perfil RTX 50.");
+            }
+            AppPaths.AtomicWrite(report, "{\"status\":\"PASS\",\"profiles\":3,\"gpuStarted\":false}");
+        }
+        catch (Exception error) { AppPaths.AtomicWrite(report, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.ToString() })); }
+    }
     private async Task InspectHardwareAsync()
     {
         try
@@ -165,7 +203,7 @@ public partial class MainWindow : Window
             RamLabel.Text = $"{hardware.RamGiB:0.0} GiB de RAM · Windows {Environment.OSVersion.Version.Build}";
             StatusLabel.Text = hardware.Problem ?? (provisioner.IsPrepared(settings) ? "Tu IA está preparada. Elegí un proyecto e iniciá." : "Equipo compatible con el perfil. Prepará la IA para empezar.");
             DetailLabel.Text = hardware.Problem is null
-                ? (settings.EngineMode == EngineMode.NInfer5080 ? $"NInfer-5080 · RTX 5070 Ti y RTX 5080 · contexto {settings.ContextTokens / 1024}K" : $"RTX 5070 Ti y RTX 5080 de escritorio · contexto {settings.ContextTokens / 1024}K")
+                ? $"{hardware.SelectedGpu!.Profile} · contexto {settings.ContextTokens / 1024}K · {(hardware.SelectedGpu.IsRtx3090 ? "perfil pendiente de validación física" : "perfil de desarrollo") }"
                 : "La descarga permanece deshabilitada en equipos fuera del alcance.";
             if (paths.SettingsRecoveryMessage is { } recovery) DetailLabel.Text = recovery;
             if (settings.EngineMode == EngineMode.NInfer5080 && Ninfer5080Profile.WarningFor(hardware.SelectedGpu?.Name ?? "", settings.ContextTokens) is { } ninferWarning) DetailLabel.Text = ninferWarning;
@@ -185,6 +223,8 @@ public partial class MainWindow : Window
         ProjectButton.IsEnabled = available;
         ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
+        ModeChoice.IsEnabled = ContextChoice.IsEnabled;
+        if (ModeChoice.Items[1] is System.Windows.Controls.ComboBoxItem nativeChoice) nativeChoice.IsEnabled = !GpuProfiles.Is3090(settings);
         StorageButton.IsEnabled = ContextChoice.IsEnabled;
         NinferEngineButton.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         ResetNinferEngineButton.IsEnabled = NinferEngineButton.IsEnabled;
@@ -201,10 +241,19 @@ public partial class MainWindow : Window
         var index = ContextChoice.SelectedIndex;
         if (index < 0 || index >= options.Length) return;
         var requestedContext = options[index];
+        EngineTuning? recommended = null;
         try
         {
             if (settings.EngineMode == EngineMode.NInfer5080) Ninfer5080Profile.Validate(requestedContext);
-            else settings.Tuning.Validate(requestedContext);
+            else
+            {
+                if (hardware?.SelectedGpu is { } gpu)
+                {
+                    var preset = GpuProfiles.For(gpu);
+                    if (settings.UseRecommendedProfile || gpu.IsRtx3090 && preset.MatchesTuning(settings.ContextTokens, settings.Tuning)) recommended = preset.CreateTuning(requestedContext);
+                }
+                (recommended ?? settings.Tuning).Validate(requestedContext);
+            }
         }
         catch (InvalidDataException ex)
         {
@@ -213,16 +262,17 @@ public partial class MainWindow : Window
             return;
         }
         settings.ContextTokens = requestedContext;
+        if (recommended is not null) settings.Tuning = recommended;
         if (!synchronizingProfile) settings.UseRecommendedProfile = false;
         paths.SaveSettings(settings);
         UpdateContextDetail();
         UpdateConfigurationSummary();
     }
-    private int[] ContextOptions => settings.EngineMode == EngineMode.NInfer5080 ? Ninfer5080Profile.Contexts : [32768, 65536];
-    private static string ContextLabel(EngineMode mode, int tokens) => tokens switch
+    private int[] ContextOptions => settings.EngineMode == EngineMode.NInfer5080 ? Ninfer5080Profile.Contexts : GpuProfiles.KvMemContexts(settings);
+    private string ContextLabel(EngineMode mode, int tokens) => tokens switch
     {
-        131072 => "128K · NInfer-5080 · requiere la GPU casi libre",
-        65536 => mode == EngineMode.NInfer5080 ? "64K · NInfer-5080 (recomendado)" : "64K · experimental, pruebas básicas en 5080",
+        131072 => mode == EngineMode.NInfer5080 ? "128K · NInfer-5080 · requiere la GPU casi libre" : "128K · RTX 3090 · inicial, validación física pendiente",
+        65536 => mode == EngineMode.NInfer5080 ? "64K · NInfer-5080 (recomendado)" : GpuProfiles.Is3090(settings) ? "64K · RTX 3090 · menor uso de memoria" : "64K · experimental, pruebas básicas en 5080",
         _ => "32K · perfil de referencia"
     };
     private void PopulateContextChoices()
@@ -248,7 +298,7 @@ public partial class MainWindow : Window
             NinferVisionCheck.IsChecked = settings.NinferVision;
             ModeHint.Text = ninfer
                 ? "Modelo oficial de Todd Ballinger con motor nativo de Windows. La configuración se adapta a tu placa; el motor se descarga al preparar la IA."
-                : "Modo Forja (KVMem 0.18.0): Qwen 27B Swift 1.5 IQ3_S, contexto 32K o 64K con caché KV en RAM. Perfil probado en esta RTX 5080.";
+                : GpuProfiles.Is3090(settings) ? "RTX 3090: motor KVMem para RTX 30 y Qwen Swift. Perfil inicial 128K para aprovechar los 24 GB; validación física pendiente." : "KVMem 0.18.0: Qwen Swift, contexto 32K o 64K y caché KV en RAM. Las pruebas históricas corresponden a una RTX 5080.";
             NinferEngineButton.Visibility = NinferEngineLabel.Visibility = NinferVisionCheck.Visibility = ninfer ? Visibility.Visible : Visibility.Collapsed;
             ResetNinferEngineButton.Visibility = ninfer && !string.IsNullOrWhiteSpace(settings.NinferEnginePath) ? Visibility.Visible : Visibility.Collapsed;
             NinferEngineLabel.Text = paths.HasNinferEngine(settings) ? "Motor: " + paths.NinferEngineExe(settings) : string.IsNullOrWhiteSpace(settings.NinferEnginePath) ? "Motor: se descargará y verificará al preparar la IA." : "Motor importado no encontrado. Elegí otro o restaurá el automático.";
@@ -257,12 +307,12 @@ public partial class MainWindow : Window
                 : "El modelo pesa unos 12,8 GB. Elegí dónde guardarlo: la descarga se puede reanudar y se verifica antes de usarla.";
             ContextHint.Text = ninfer
                 ? "64K es el perfil inicial en ambas placas. 128K es experimental en Windows nativo y puede no entrar en la VRAM libre."
-                : "64K permite un historial más largo mediante KVMem y reserva hasta 4 GiB de caché en RAM. No equivale a atender 64K completos en GPU. Cambialo con la IA detenida.";
+                : GpuProfiles.Is3090(settings) ? "128K inicial: 96K de historial seleccionado y 16K de reserva en GPU, con hasta 8 GiB de caché en RAM. KVMem recupera historial: no equivale a atención completa sobre 128K en GPU. Podés elegir 64K o 32K con la IA detenida." : "64K permite un historial más largo mediante KVMem y reserva hasta 4 GiB de caché en RAM. No equivale a atender 64K completos en GPU. Cambialo con la IA detenida.";
             ModelLocation.Text = string.IsNullOrWhiteSpace(paths.ImportedModelPath(settings)) ? paths.ModelDirectoryPath(settings) : paths.ActiveModelPath(settings);
             ImportButton.Content = ninfer ? "Usar artefacto NInfer-5080 ya descargado" : "Usar modelo ya descargado";
             ModeFootnote.Text = ninfer
                 ? "Port nativo de Windows basado en ninfer-5080 de Todd Ballinger. Modelo Apache-2.0. La prueba de inferencia de estos perfiles en Forja sigue pendiente."
-                : "La variante Swift tiene condiciones propias para uso comercial. La visión está desactivada para reservar memoria al código. La 5070 Ti todavía requiere validación física de esta aplicación.";
+                : "La variante Swift tiene condiciones propias para uso comercial. Visión desactivada para reservar memoria al código. La 5070 Ti y la 3090 todavía requieren validación física en Forja.";
             PopulateContextChoices();
         }
         finally { populatingMode = guard; }
@@ -273,14 +323,16 @@ public partial class MainWindow : Window
         var warning = settings.EngineMode == EngineMode.NInfer5080 ? Ninfer5080Profile.WarningFor(hardware?.SelectedGpu?.Name ?? "", settings.ContextTokens) : null;
         DetailLabel.Text = warning ?? (settings.EngineMode == EngineMode.NInfer5080
             ? (settings.ContextTokens == 131072 ? "128K: experimental en Windows nativo; todavía no validamos el contexto completo." : "64K: contexto recomendado del modo NInfer-5080.")
+            : GpuProfiles.Is3090(settings) ? $"RTX 3090 · {settings.ContextTokens / 1024}K · motor sm86 · perfil inicial pendiente de validación física."
             : (settings.ContextTokens == 65536 ? "64K: pruebas básicas aprobadas en RTX 5080; uso prolongado y 5070 Ti pendientes de validar." : "32K: perfil de referencia. El historial se resume cuando se acerca al límite."));
     }
     private void ModeChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (settings is null || paths is null || populatingMode) return;
+        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error) || GpuProfiles.Is3090(settings) && ModeChoice.SelectedIndex == 1) { ApplyModeToUi(); return; }
         settings.EngineMode = ModeChoice.SelectedIndex == 1 ? EngineMode.NInfer5080 : EngineMode.KvMem; settings.LicenseAccepted = false; LicenseCheck.IsChecked = false;
         if (settings.EngineMode == EngineMode.NInfer5080) { if (settings.ContextTokens is not (65536 or 131072)) settings.ContextTokens = Ninfer5080Profile.DefaultContext; }
-        else if (settings.ContextTokens is not (32768 or 65536)) settings.ContextTokens = ReleaseProfile.Context;
+        else if (!GpuProfiles.KvMemContexts(settings).Contains(settings.ContextTokens)) settings.ContextTokens = ReleaseProfile.Context;
         paths.SaveSettings(settings);
         ApplyModeToUi(); RefreshControls(); UpdateContextDetail();
         StatusLabel.Text = settings.EngineMode == EngineMode.NInfer5080 ? "Motor nativo seleccionado. Pulsá Preparar IA para descargar lo necesario." : "Modo Forja seleccionado. Prepará la IA para empezar.";
@@ -361,8 +413,9 @@ public partial class MainWindow : Window
     {
         if (hardware?.SelectedGpu is not { } gpu) return;
         _ = GpuProfiles.Apply(settings, gpu);
+        LicenseCheck.IsChecked = settings.LicenseAccepted;
         synchronizingProfile = true;
-        PopulateContextChoices();
+        ApplyModeToUi();
         synchronizingProfile = false;
         paths.SaveSettings(settings); UpdateConfigurationSummary();
     }
@@ -451,10 +504,11 @@ public partial class MainWindow : Window
         hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
         ApplyHardwareProfile();
         var gpu = hardware.SelectedGpu!;
-        var minimumFree = settings.EngineMode == EngineMode.NInfer5080 ? (settings.ContextTokens == 131072 ? 15500 : Ninfer5080Profile.For(gpu).MinimumFreeMiB) : 13000;
+        GpuProfiles.ValidateBackend(settings);
+        var minimumFree = GpuProfiles.MinimumFreeMiB(settings, gpu);
         if (runtime.State != RuntimeState.Ready && gpu.FreeMiB < minimumFree) throw new InvalidOperationException(settings.EngineMode == EngineMode.NInfer5080
             ? $"Este perfil necesita al menos unos {minimumFree:N0} MiB libres antes de iniciar. Cerrá otras aplicaciones que usen la GPU y reintentá; no se cerrará ningún programa ajeno."
-            : "Hay otra aplicación usando mucha memoria de la GPU. Detené la otra IA o cerrá el juego y reintentá; no se cerrará ningún programa ajeno.");
+            : $"Este perfil pide al menos {minimumFree:N0} MiB libres para intentar el inicio. Cerrá otras aplicaciones que usen la GPU o elegí un perfil de menor contexto; no se cerrará ningún programa ajeno.");
         var url = await runtime.StartAsync(settings, gpu, settings.LastProject, ct);
         await OpenChatAsync(url); DetailLabel.Text = "Proyecto: " + settings.LastProject;
     });

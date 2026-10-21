@@ -321,13 +321,19 @@ public static class SafeArchive
 
 public sealed class Provisioner(AppPaths paths, VerifiedDownloader downloader)
 {
-    public bool IsPrepared(AppSettings settings) => File.Exists(paths.AgentExe) && File.Exists(paths.GitExe) && File.Exists(paths.NodeExe) && File.Exists(paths.ActiveModelPath(settings))
-        && (settings.EngineMode == EngineMode.NInfer5080 ? paths.HasNinferEngine(settings) : File.Exists(paths.EngineExe));
+    public bool IsPrepared(AppSettings settings)
+    {
+        try { GpuProfiles.ValidateBackend(settings); }
+        catch (InvalidDataException) { return false; }
+        return File.Exists(paths.AgentExe) && File.Exists(paths.GitExe) && File.Exists(paths.NodeExe) && File.Exists(paths.ActiveModelPath(settings))
+            && (settings.EngineMode == EngineMode.NInfer5080 ? paths.HasNinferEngine(settings) : File.Exists(paths.KvMemEngineExe(settings)));
+    }
     public async Task PrepareAsync(AppSettings settings, IProgress<PreparationProgress>? progress, CancellationToken ct)
     {
+        GpuProfiles.ValidateBackend(settings);
         if (!settings.LicenseAccepted) throw new InvalidOperationException("Revisá las licencias y confirmá su aceptación antes de descargar.");
         if (settings.EngineMode == EngineMode.NInfer5080 && !string.IsNullOrWhiteSpace(settings.NinferEnginePath) && !paths.HasNinferEngine(settings)) throw new InvalidOperationException("No se encuentra el motor importado. Elegí un archivo válido o restaurá el motor automático.");
-        foreach (var asset in ReleaseProfile.ComponentsFor(settings.EngineMode))
+        foreach (var asset in ReleaseProfile.ComponentsFor(settings))
         {
             if (asset == ReleaseProfile.NativeEngine && !string.IsNullOrWhiteSpace(settings.NinferEnginePath)) continue;
             var archive = Path.Combine(paths.Downloads, asset.FileName);

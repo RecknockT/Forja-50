@@ -24,11 +24,13 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
         await gate.WaitAsync(ct);
         try
         {
-            if (!gpu.IsSupported || gpu.TotalMiB < 15000) throw new InvalidOperationException("La placa está fuera del alcance de esta versión.");
+            var preset = GpuProfiles.For(gpu);
+            if (settings.HardwareProfileId != preset.Id) throw new InvalidOperationException("La placa cambió. Volvé a comprobar el equipo y preparar su motor antes de iniciar.");
+            GpuProfiles.ValidateBackend(settings);
             var ninfer5080 = settings.EngineMode == EngineMode.NInfer5080;
             if (ninfer5080) settings.NativeTuning.Validate(settings.ContextTokens);
             else { _ = ContextProfile.For(settings.ContextTokens); settings.Tuning.Validate(settings.ContextTokens); }
-            var engineExe = ninfer5080 ? paths.NinferEngineExe(settings) : paths.EngineExe;
+            var engineExe = ninfer5080 ? paths.NinferEngineExe(settings) : paths.KvMemEngineExe(settings);
             var modelPath = paths.ActiveModelPath(settings);
             var modelAsset = ReleaseProfile.ModelFor(settings.EngineMode);
             var profileKey = string.Join(':', settings.EngineMode, settings.ContextTokens, gpu.Index, modelPath, engineExe,
