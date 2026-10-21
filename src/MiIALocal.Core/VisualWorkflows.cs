@@ -15,8 +15,9 @@ public static class VisualWorkflows
         Node("1", "UNETLoader", ("unet_name", animation ? VisualCatalog.Wan.Asset.FileName : VisualCatalog.Flux.Asset.FileName), ("weight_dtype", "default"));
         Node("2", "CLIPLoader", ("clip_name", animation ? VisualCatalog.WanText.Asset.FileName : VisualCatalog.FluxText.Asset.FileName), ("type", animation ? "wan" : "flux2"), ("device", "default"));
         Node("3", "VAELoader", ("vae_name", animation ? VisualCatalog.WanVae.Asset.FileName : VisualCatalog.FluxVae.Asset.FileName));
-        Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", r.Prompt));
-        Node("5", "ConditioningZeroOut", ("conditioning", Link("4")));
+        Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", animation ? VisualAnimation.Prompt(r.Prompt, reference is not null) : r.Prompt));
+        if (animation) Node("5", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.NegativePrompt));
+        else Node("5", "ConditioningZeroOut", ("conditioning", Link("4")));
         if (reference is not null) Node("20", "LoadImage", ("image", reference));
         if (!animation)
         {
@@ -39,7 +40,11 @@ public static class VisualWorkflows
         else
         {
             Node("6", "Wan22ImageToVideoLatent", ("vae", Link("3")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
-            if (reference is not null) Node("6", "Wan22ImageToVideoLatent", ("vae", Link("3")), ("start_image", Link("20")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
+            if (reference is not null)
+            {
+                Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
+                Node("6", "Wan22ImageToVideoLatent", ("vae", Link("3")), ("start_image", Link("21")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
+            }
             Node("7", "ModelSamplingSD3", ("model", Link("1")), ("shift", 8.0));
             Node("11", "KSampler", ("model", Link("7")), ("positive", Link("4")), ("negative", Link("5")), ("latent_image", Link("6")), ("seed", r.Seed), ("steps", r.Steps), ("cfg", 5.0), ("sampler_name", "uni_pc"), ("scheduler", "simple"), ("denoise", 1.0));
         }

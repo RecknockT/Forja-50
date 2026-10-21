@@ -56,6 +56,19 @@ if "--real-gif" in sys.argv:
         assert not list(Path(temporary).glob("*.tmp"))
     print("PASS GIF real: ocho fotogramas, repetición y escritura atómica; sin GPU")
 
+if "--real-fit" in sys.argv:
+    import torch
+    assert not torch.cuda.is_initialized()
+    image = torch.zeros((1, 4, 8, 3))
+    image[:, :, :4, 0] = 1
+    image[:, :, 4:, 2] = 1
+    fitted = bridge.ForjaFitReference().fit(image, 256, 256)[0]
+    assert fitted.shape == (1, 256, 256, 3)
+    assert fitted[0, 0, 0, 0] == 1 and fitted[0, -1, -1, 2] == 1
+    assert torch.allclose(fitted[:, 0], fitted[:, 64])
+    assert not torch.cuda.is_initialized()
+    print("PASS referencia real: marco completo y orientación sin recorte; CPU sin CUDA")
+
 os.environ["FORJA_VISUAL_TOKEN"] = ""
 try:
     spec.loader.exec_module(importlib.util.module_from_spec(spec))

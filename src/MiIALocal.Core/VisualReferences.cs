@@ -32,6 +32,17 @@ public sealed class VisualReferenceSearch : IDisposable
         return subject.Length > 100 ? subject[..100] : subject;
     }
 
+    // Conservative lookup guard, not a language model: broad visual concepts stay in the prompt.
+    public static string? AutomaticSubject(string prompt)
+    {
+        var subject = SuggestSubject(prompt);
+        if (string.IsNullOrWhiteSpace(subject)) return null;
+        var first = subject.Split(' ', 2)[0];
+        var concepts = new HashSet<string>("anime manga animación animacion animation cartoon dibujo ilustración ilustracion illustration estilo style estética estetica aesthetic retro vintage cyberpunk steampunk acuarela watercolor óleo oleo pintura painting fotografía fotografia photo fotografía paisaje landscape ciudad city bosque forest montaña montana mountain robot robots auto coche car mujer hombre chica chico woman man girl boy guerrera guerrero warrior personaje character pequeño pequena pequeña grande hermoso hermosa beautiful escena scene noche night día dia años anos decades décadas abstract abstracto abstracta futurista futuristic medieval realista realistic realismo realism pixel arte art 3d 2d".Split(' '), StringComparer.OrdinalIgnoreCase);
+        if (concepts.Contains(first) || Regex.IsMatch(first, @"^\d", RegexOptions.CultureInvariant)) return null;
+        return subject;
+    }
+
     public async Task<VisualReference[]> SearchAsync(string subject, CancellationToken ct)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(25)); ct = deadline.Token;

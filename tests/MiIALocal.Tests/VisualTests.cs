@@ -9,6 +9,9 @@ static class VisualTests
     {
         await test("Visual: referencias en línea detectan Frieren y distinguen personaje de serie", () =>
         {
+            foreach (var idea in new[] { "anime de los 90", "generar una imagen de anime de los 90", "estética anime noventera", "un paisaje con estilo retro", "1990s anime style", "un robot caminando" })
+                assert(VisualReferenceSearch.AutomaticSubject(idea) is null, "Un concepto general se convierte en una obra: " + idea);
+            assert(VisualReferenceSearch.AutomaticSubject("Frieren volando con estilo anime de los 90") == "Frieren", "Se perdió el personaje al pedir un estilo.");
             assert(VisualReferenceSearch.SuggestSubject("generar una imagen de frieren volando") == "frieren", "La búsqueda incluye la acción.");
             assert(VisualReferenceSearch.SuggestSubject("Create an image of Frieren flying") == "Frieren", "La sugerencia en inglés incluye el pedido.");
             assert(VisualReferenceSearch.SuggestSubject("") == "", "El pedido vacío falla.");
@@ -16,6 +19,25 @@ static class VisualTests
             var character = series with { Title = "Frieren (character)" };
             assert(VisualReferenceSearch.AutomaticMatch([series, character], "frieren") == character, "Se usa la portada de la serie en lugar del personaje.");
             assert(!VisualReferenceSearch.AllowedImage("http://127.0.0.1/file") && !VisualReferenceSearch.AllowedImage("https://upload.wikimedia.org.evil.test/a.png") && !VisualReferenceSearch.AllowedImage("https://user@upload.wikimedia.org/a.png"), "Referencia externa insegura.");
+            return Task.CompletedTask;
+        });
+        await test("Visual: animación conserva marco, orientación, estilo y pedido de movimiento", () =>
+        {
+            foreach (var format in new[] { 0, 1, 2 })
+            {
+                var (width, height) = VisualAnimation.Dimensions(format);
+                var request = new VisualRequest(VisualTask.Animation, "que transite por el camino", width, height, 42);
+                request.Validate();
+                var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(request, new string('a', 32), "car.png"));
+                var prompt = graph.GetProperty("4").GetProperty("inputs").GetProperty("text").GetString()!;
+                assert(prompt.Contains(request.Prompt) && prompt.Contains("visual style"), "Se pierde el movimiento original o el estilo.");
+                assert(graph.GetProperty("5").GetProperty("class_type").GetString() == "CLIPTextEncode", "Wan recibe un negativo vacío.");
+                assert(graph.GetProperty("21").GetProperty("class_type").GetString() == "ForjaFitReference", "La referencia se recorta en el nodo Wan.");
+                assert(graph.GetProperty("6").GetProperty("inputs").GetProperty("start_image")[0].GetString() == "21", "No se usa el marco ajustado.");
+                assert(width * height <= 768 * 448, "El nuevo formato aumenta el presupuesto de píxeles.");
+            }
+            var textOnly = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "car moving", 768, 448, 1), new string('a', 32)));
+            assert(!textOnly.GetProperty("6").GetProperty("inputs").TryGetProperty("start_image", out _) && VisualAnimation.Prompt("car moving", false) == "car moving", "Video sin referencia hereda una imagen.");
             return Task.CompletedTask;
         });
         await test("Visual: búsqueda real del protocolo, imagen acotada y procedencia persistente", async () =>

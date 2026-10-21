@@ -30,7 +30,8 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox steps = new() { ItemsSource = new[] { "10 pasos · más rápido", "20 pasos · inicial", "30 pasos · más lento" }, SelectedIndex = 1 };
     private readonly CheckBox animation = new() { Content = "Descargar también Wan para animaciones y GIF" };
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
-    private readonly CheckBox webReferences = new() { Content = "Buscar referencia en internet (Wikipedia)" };
+    private readonly CheckBox webReferences = new() { Content = "Buscar personajes reconocibles en Wikipedia" };
+    private readonly TextBlock animationHint = new() { Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10), Visibility = Visibility.Collapsed };
     private readonly TextBox webSubject = new() { MaxLength = 100, ToolTip = "Opcional: escribí solo el personaje u objeto, por ejemplo Frieren. Vacío: se intenta detectar en tu descripción." };
     private readonly TextBlock webStatus = new() { Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 8) };
     private readonly Button webSource = new() { Content = "Ver origen de la referencia", HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed, FontSize = 12 };
@@ -58,7 +59,7 @@ public sealed class VisualPane : UserControl
     private readonly ListBox gallery = new() { Height = 145 };
     private string? reference;
     private string? resultFile;
-    private bool available, compatible, preparing, generating, loading, wasPrepared;
+    private bool available, compatible, preparing, generating, loading, wasPrepared, animationFormats;
     public bool IsReady => runtime.IsReady;
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
@@ -109,13 +110,14 @@ public sealed class VisualPane : UserControl
         example.Click += (_, _) => prompt.Text = task.SelectedIndex switch { 1 => "Cambiá solo el brazo izquierdo a rojo. Conservá los demás detalles.", 2 => "El personaje saluda suavemente con la mano. Cámara fija.", _ => "Un pequeño robot blanco en un taller acogedor, iluminación cálida y estilo de ilustración 3D." }; editor.Children.Add(example);
         editor.Children.Add(new TextBlock { Text = "Formato", FontWeight = FontWeights.SemiBold, Margin = new(0, 6, 0, 8) });
         var options = new WrapPanel(); options.Children.Add(size); options.Children.Add(duration); editor.Children.Add(options);
+        editor.Children.Add(animationHint);
         var advanced = new StackPanel(); advanced.Children.Add(new TextBlock { Text = "Semilla: dejala vacía para variar cada resultado." }); advanced.Children.Add(seed);
         advanced.Children.Add(new TextBlock { Text = "Pasos de animación (no cambia los cuatro pasos de imágenes)." }); advanced.Children.Add(steps);
         editor.Children.Add(new Expander { Header = "Más opciones", Foreground = Brushes.LightGray, Content = advanced, Margin = new(0, 12, 0, 14) });
         editor.Children.Add(webReferences);
         var webOptions = new StackPanel();
         webOptions.Children.Add(new TextBlock { Text = "Personaje u objeto (opcional; vacío = detectar en tu descripción)", FontSize = 12, Margin = new(0, 10, 0, 6) }); webOptions.Children.Add(webSubject);
-        webOptions.Children.Add(new TextBlock { Text = "Al crear una imagen se envía el término de búsqueda a Wikipedia y se descarga una referencia. Podés desactivarlo para trabajar sin conexión. Editar y animar usan la imagen que elegiste.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
+        webOptions.Children.Add(new TextBlock { Text = "Los estilos generales, como anime de los 90, se describen directamente al modelo. La búsqueda automática solo usa coincidencias claras; no te obliga a elegir una serie. Escribí un nombre aquí para buscarlo expresamente. Se envía ese término a Wikipedia. Editar y animar usan la imagen elegida.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
         editor.Children.Add(new Expander { Header = "Referencias en línea · opciones", Foreground = Brushes.White, Content = webOptions, Margin = new(0, 8, 0, 10) });
         editor.Children.Add(webStatus); editor.Children.Add(webSource);
         webReferences.Click += (_, _) => { settings().Visual.WebReferencesEnabled = webReferences.IsChecked == true; Save(); Refresh(); };
@@ -200,11 +202,18 @@ public sealed class VisualPane : UserControl
         for (var index = 0; index < taskTabs.Length; index++) { taskTabs[index].IsEnabled = available; taskTabs[index].Background = new SolidColorBrush(index == task.SelectedIndex ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67)); }
         animation.IsEnabled = license.IsEnabled = available && !IsActive;
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = available;
-        size.IsEnabled = available && task.SelectedIndex != 2; duration.IsEnabled = available && task.SelectedIndex == 2;
+        size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
         seed.IsEnabled = available; steps.IsEnabled = available && task.SelectedIndex == 2;
         webReferences.IsEnabled = available && task.SelectedIndex == 0;
         webSubject.IsEnabled = available && task.SelectedIndex == 0 && webReferences.IsChecked == true;
-        size.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
+        if (animationFormats != (task.SelectedIndex == 2))
+        {
+            var format = Math.Max(0, size.SelectedIndex); animationFormats = task.SelectedIndex == 2;
+            size.ItemsSource = animationFormats ? new[] { "Cuadrada · 576 × 576", "Horizontal · 768 × 448", "Vertical · 448 × 768" } : new[] { "Cuadrada · 1024 × 1024", "Horizontal · 1024 × 768", "Vertical · 768 × 1024" };
+            size.SelectedIndex = format;
+        }
+        animationHint.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        animationHint.Text = reference is null ? "Sin imagen: se crea el video desde tu descripción. Para animar algo concreto, elegí una imagen inicial y describí su movimiento." : "La imagen será el primer fotograma y se ajustará sin recortarla. Describí qué se desplaza, hacia dónde y cómo se mueve la cámara. El final no tiene por qué coincidir con el inicio del GIF.";
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
@@ -228,7 +237,7 @@ public sealed class VisualPane : UserControl
             var (width, height) = size.SelectedIndex switch { 1 => (1024, 768), 2 => (768, 1024), _ => (1024, 1024) };
             var kind = (VisualTask)task.SelectedIndex;
             var frames = duration.SelectedIndex == 1 ? 121 : 73;
-            if (kind == VisualTask.Animation) { width = 768; height = 448; }
+            if (kind == VisualTask.Animation) (width, height) = VisualAnimation.Dimensions(size.SelectedIndex);
             if (kind != VisualTask.Animation) { visual.Width = width; visual.Height = height; }
             visual.AnimationFrames = frames; visual.AnimationSteps = steps.SelectedIndex switch { 0 => 10, 2 => 30, _ => 20 }; Save();
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
@@ -239,23 +248,36 @@ public sealed class VisualPane : UserControl
             VisualReference? discovered = kind == VisualTask.Image ? null : onlineReference;
             if (kind == VisualTask.Image && visual.WebReferencesEnabled)
             {
-                var subject = string.IsNullOrWhiteSpace(webSubject.Text) ? VisualReferenceSearch.SuggestSubject(request.Prompt) : webSubject.Text.Trim();
+                var explicitSearch = !string.IsNullOrWhiteSpace(webSubject.Text);
+                var subject = explicitSearch ? webSubject.Text.Trim() : VisualReferenceSearch.AutomaticSubject(request.Prompt);
+                if (subject is null) { ShowOnlineSource(null); webStatus.Text = "Concepto o estilo general: se usa tu descripción, sin elegir una obra concreta."; }
+                else
+                {
                 status("Buscando referencia: " + subject + "…"); webStatus.Text = "Buscando en Wikipedia: " + subject; onlineReference = null; webSource.Visibility = Visibility.Collapsed;
                 try
                 {
                     using var search = new VisualReferenceSearch();
                     var choices = await search.SearchAsync(subject, ct);
-                    discovered = VisualReferenceSearch.AutomaticMatch(choices, subject) ?? ChooseOnlineReference(choices);
-                    if (discovered is null) return;
+                    discovered = VisualReferenceSearch.AutomaticMatch(choices, subject) ?? (explicitSearch ? ChooseOnlineReference(choices) : null);
+                    if (discovered is null && explicitSearch) return;
+                    if (discovered is null) webStatus.Text = "Sin una coincidencia clara: se generará tu idea sin imponer una referencia.";
+                    else
+                    {
                     chosenReference = await search.DownloadAsync(discovered, paths.VisualInputs, ct);
                     using (var input = File.OpenRead(chosenReference))
                     { var decoder = BitmapDecoder.Create(input, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None); if (decoder.Frames[0].PixelWidth > 8192 || decoder.Frames[0].PixelHeight > 8192) throw new InvalidDataException("La referencia supera el tamaño admitido."); }
                     LoadPreview(chosenReference); resultTitle.Text = "Referencia de internet";
                     ShowOnlineSource(discovered);
+                    }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
                 catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or NotSupportedException or System.IO.FileFormatException)
-                { webStatus.Text = "No se pudo obtener una referencia. No se generó la imagen."; status("La búsqueda no se completó: " + ex.Message + " Podés corregir el término o desactivar la búsqueda para generar sin referencia."); return; }
+                {
+                    chosenReference = null; discovered = null; ShowOnlineSource(null);
+                    if (explicitSearch) { webStatus.Text = "No se pudo obtener la referencia solicitada. Corregí el nombre o borrá el término para crear sin ella."; status(webStatus.Text + " " + ex.Message); return; }
+                    webStatus.Text = "La búsqueda no estuvo disponible. Se usa tu descripción sin referencia en línea.";
+                }
+                }
             }
             else if (kind == VisualTask.Image) { onlineReference = null; webStatus.Text = "Creación sin búsqueda en internet."; webSource.Visibility = Visibility.Collapsed; }
             var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
@@ -332,6 +354,10 @@ public sealed class VisualPane : UserControl
         if (cancel.Visibility != Visibility.Visible || !Equals(cancel.Content, "Cancelar")) throw new Exception("Falta la cancelación del arranque visual.");
         loading = false; Refresh();
         if (cancel.Visibility != Visibility.Collapsed || gallery.Visibility != Visibility.Collapsed || emptyGallery.Visibility != Visibility.Visible) throw new Exception("El estado inicial muestra controles o galería vacíos.");
+        task.SelectedIndex = 2; size.SelectedIndex = 2; Refresh();
+        if (!animationFormats || !size.IsEnabled || !size.Items[2].ToString()!.Contains("448 × 768") || animationHint.Visibility != Visibility.Visible) throw new Exception("La orientación de la animación no se puede elegir.");
+        task.SelectedIndex = 0; Refresh();
+        if (animationFormats || !size.Items[2].ToString()!.Contains("768 × 1024")) throw new Exception("La animación alteró los formatos de imagen.");
     }
     private void Export()
     {

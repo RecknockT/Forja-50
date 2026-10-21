@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.3.
+21 de octubre de 2026 · desarrollo 0.3.4.
+
+## Conceptos generales y animación 0.3.4
+
+- «Anime de los 90» y otros conceptos visuales generales se pasan al modelo sin imponer una ficha de Wikipedia. La consulta automática es conservadora y usa solo coincidencias claras; sin coincidencia o red disponible continúa con el texto. El selector de fichas queda reservado a una búsqueda escrita expresamente por el usuario. No hay un LLM conversacional clasificando la intención.
+- Wan usa su propio texto negativo codificado para defectos visuales, en lugar del ConditioningZeroOut que corresponde al flujo FLUX. Se conservan shift 8, CFG 5, uni_pc/simple, 20 pasos y 24 FPS de la plantilla oficial; la descripción original se conserva y, con imagen inicial, se añaden indicaciones para mantener identidad, geometría y estilo.
+- Animación cuadrada 576×576, horizontal 768×448 y vertical 448×768, sin aumentar el presupuesto de píxeles anterior. El marco inicial se ajusta conservando proporciones con bordes extendidos; no se recorta ni se fuerza a horizontal. Nuevas pruebas de grafo, interfaz y ajuste real en CPU.
+- Revisión del MP4 aportado: 73 fotogramas a 24 FPS; deforma y cambia los colores del auto en lugar de hacerlo avanzar. Guardar GIF/MP4 funciona en la prueba del usuario, pero eso no valida calidad de movimiento. La mejora de calidad de este flujo necesita repetir una generación real; no se garantiza una trayectoria ni un bucle perfecto.
+- Plantilla contrastada: https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_wan2_2_5B_ti2v.json
 
 ## Referencias en línea y exportación 0.3.3
 

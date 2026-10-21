@@ -65,7 +65,7 @@ public sealed class VisualJob
     public string? Reference { get; set; }
     public VisualReference? OnlineReference { get; set; }
     public string[] Files { get; set; } = [];
-    public string WorkflowVersion { get; set; } = "forja-visual-1 / ComfyUI " + VisualCatalog.ComfyVersion;
+    public string WorkflowVersion { get; set; } = "forja-visual-2 / ComfyUI " + VisualCatalog.ComfyVersion;
 }
 
 public sealed class VisualJobStore(AppPaths paths)

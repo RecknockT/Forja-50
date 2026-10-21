@@ -55,4 +55,28 @@ class ForjaSaveGif:
                 frame.close()
         return {"ui": {"gifs": [{"filename": target, "subfolder": subfolder, "type": "output"}]}}
 
-NODE_CLASS_MAPPINGS = {"ForjaSaveGif": ForjaSaveGif}
+class ForjaFitReference:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"image": ("IMAGE",), "width": ("INT", {"min": 256, "max": 832}), "height": ("INT", {"min": 256, "max": 832})}}
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "fit"
+    CATEGORY = "Forja"
+
+    def fit(self, image, width, height):
+        import torch
+        import torch.nn.functional as functional
+        if width < 256 or height < 256 or width > 832 or height > 832:
+            raise ValueError("Unsupported reference dimensions")
+        # Letterbox the entire initial frame instead of the Wan node's center crop.
+        pixels = image[:1, :, :, :3].movedim(-1, 1).cpu()
+        scale = min(width / pixels.shape[-1], height / pixels.shape[-2])
+        resized_width = max(1, min(width, round(pixels.shape[-1] * scale)))
+        resized_height = max(1, min(height, round(pixels.shape[-2] * scale)))
+        pixels = functional.interpolate(pixels, size=(resized_height, resized_width), mode="bilinear", align_corners=False)
+        left = (width - resized_width) // 2
+        top = (height - resized_height) // 2
+        pixels = functional.pad(pixels, (left, width - resized_width - left, top, height - resized_height - top), mode="replicate")
+        return (pixels.movedim(1, -1),)
+
+NODE_CLASS_MAPPINGS = {"ForjaSaveGif": ForjaSaveGif, "ForjaFitReference": ForjaFitReference}
