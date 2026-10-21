@@ -14,7 +14,7 @@ namespace MiIALocal.Desktop;
 public partial class MainWindow : Window
 {
     private readonly AppPaths paths;
-    private readonly AppSettings settings;
+    private AppSettings settings;
     private readonly HttpClient http = new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.None, MaxConnectionsPerServer = 32, ConnectTimeout = TimeSpan.FromSeconds(15) }) { Timeout = Timeout.InfiniteTimeSpan };
     private readonly Provisioner provisioner;
     private readonly RuntimeSupervisor runtime;
@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? operation;
     private TaskCompletionSource? operationFinished;
     private string? pendingInstaller;
+    private Func<bool>? closeConfirmationForTest;
     private bool preparing, preparationPaused;
     private bool busy, closing, exiting, browserReady, synchronizingProfile = true, populatingContext, populatingMode;
     public MainWindow(AppPaths paths)
@@ -34,6 +35,16 @@ public partial class MainWindow : Window
         UpdateProject(); ApplyModeToUi();
         Loaded += async (_, _) =>
         {
+            if (App.Argument("--smoke-cleanup-all") is { } cleanupReport && App.Argument("--data-root") is not null)
+            {
+                await SmokeCleanupAllAsync(cleanupReport);
+                exiting = true; Close(); return;
+            }
+            if (App.Argument("--smoke-github") is { } githubReport && App.Argument("--data-root") is not null)
+            {
+                await SmokeGitHubAsync(githubReport);
+                exiting = true; Close(); return;
+            }
             if (App.Argument("--smoke-gpu-profiles") is { } profileReport && App.Argument("--data-root") is not null)
             {
                 SmokeGpuProfiles(profileReport);
@@ -58,6 +69,10 @@ public partial class MainWindow : Window
             if (App.Argument("--smoke-close") is { } closeResult)
             {
                 var pauseDownload = App.Arguments.Contains("--pause-download");
+                var declineClose = App.Arguments.Contains("--decline-close");
+                var declineObserved = false;
+                var confirmationCalls = 0;
+                closeConfirmationForTest = () => !declineClose || ++confirmationCalls > 1;
                 var duringOperation = App.Arguments.Contains("--close-during-operation") || pauseDownload;
                 var rejectContext = App.Arguments.Contains("--reject-invalid-context");
                 var cancellationObserved = false;
@@ -68,7 +83,7 @@ public partial class MainWindow : Window
                 }
                 Closed += (_, _) =>
                 {
-                    if (!File.Exists(closeResult)) AppPaths.AtomicWrite(closeResult, System.Text.Json.JsonSerializer.Serialize(new { status = duringOperation && !cancellationObserved || rejectContext && (settings.ContextTokens != 65536 || ContextChoice.SelectedIndex != 1) ? "FAIL" : "PASS", scenario = rejectContext ? "invalid-context-rejected" : duringOperation ? "cancel-operation-and-close" : App.Arguments.Contains("--repeat-close") ? "repeated-close" : "first-close", date = DateTimeOffset.Now }, AppPaths.JsonOptions));
+                    if (!File.Exists(closeResult)) AppPaths.AtomicWrite(closeResult, System.Text.Json.JsonSerializer.Serialize(new { status = declineClose && !declineObserved || duringOperation && !cancellationObserved || rejectContext && (settings.ContextTokens != 65536 || ContextChoice.SelectedIndex != 1) ? "FAIL" : "PASS", scenario = declineClose ? "decline-then-confirm" : rejectContext ? "invalid-context-rejected" : duringOperation ? "cancel-operation-and-close" : App.Arguments.Contains("--repeat-close") ? "repeated-close" : "first-close", date = DateTimeOffset.Now }, AppPaths.JsonOptions));
                 };
                 if (pauseDownload) preparing = true;
                 if (duringOperation) _ = RunOperationAsync(async ct =>
@@ -86,7 +101,13 @@ public partial class MainWindow : Window
                         if (!hadPauseButton || !preparationPaused || !Equals(PrepareButton.Content, "Reanudar preparación"))
                             AppPaths.AtomicWrite(closeResult, "{\"status\":\"FAIL\",\"error\":\"Controles de pausa incorrectos\"}");
                     }
-                    if (App.Arguments.Contains("--repeat-close")) { Close(); Close(); }
+                    if (declineClose)
+                    {
+                        Close(); await Task.Delay(100);
+                        declineObserved = IsVisible && !closing && !exiting && !cancellationObserved && confirmationCalls == 1;
+                        Close();
+                    }
+                    else if (App.Arguments.Contains("--repeat-close")) { Close(); Close(); }
                     else SystemCommands.CloseWindow(this);
                 }));
                 return;
@@ -160,6 +181,51 @@ public partial class MainWindow : Window
         }
         finally { await runtime.StopAsync(); await runtime.DisposeAsync(); healthTimer.Stop(); Chat.Dispose(); http.Dispose(); exiting = true; Close(); }
     }
+    private async Task SmokeGitHubAsync(string report)
+    {
+        try
+        {
+            var fixture = new AppPaths(Path.Combine(paths.Root, "github-fixture"));
+            Directory.CreateDirectory(fixture.GitHubCredentialStore);
+            foreach (var file in new[] { fixture.GitExe, fixture.GitHubCredentialExe }) { Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllText(file, "fixture"); }
+            var connection = new GitHubConnection(fixture, (_, _) => Task.FromResult(new GitHubCommandResult(0, "fixture-user\n")));
+            var window = new GitHubWindow(fixture, new(), http, connection) { Owner = this };
+            window.Show(); await window.Ready;
+            if (!window.IsSignedIn || window.CanConnect || !window.AccountText.Contains("fixture-user")) throw new IOException("Estado de cuenta incorrecto.");
+            window.Close();
+            AppPaths.AtomicWrite(report, "{\"status\":\"PASS\",\"oauthStarted\":false,\"gpuStarted\":false}");
+        }
+        catch (Exception error) { AppPaths.AtomicWrite(report, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.ToString() })); }
+    }
+    private async Task SmokeCleanupAllAsync(string report)
+    {
+        try
+        {
+            settings.LastProject = Path.Combine(paths.Root, "proyecto-preservado"); Directory.CreateDirectory(settings.LastProject);
+            var projectFile = Path.Combine(settings.LastProject, "trabajo.txt"); File.WriteAllText(projectFile, "conservar");
+            paths.SaveSettings(settings);
+            foreach (var file in new[] { paths.ActiveModelPath(settings), paths.NinferEngineExe(settings), Path.Combine(paths.GitHubCredentialStore, "fixture"), paths.GitHubAccountFile })
+            { Directory.CreateDirectory(Path.GetDirectoryName(file)!); File.WriteAllText(file, "fixture"); }
+            if (App.Arguments.Contains("--initialize-browser"))
+            {
+                var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(paths.Root, "browser"));
+                await Chat.EnsureCoreWebView2Async(environment); browserReady = true;
+            }
+            await ReleaseBrowserForCleanupAsync();
+            new StorageCleanup(paths, settings).Delete(Enum.GetValues<StorageCategory>());
+            RefreshAfterStorageCleanup(true);
+            if (!IsVisible || closing || !File.Exists(projectFile) || !string.IsNullOrEmpty(settings.LastProject) || LicenseCheck.IsChecked == true || WelcomePane.Visibility != Visibility.Visible)
+                throw new IOException("La limpieza cerró la aplicación o perdió el proyecto/estado inicial.");
+            if (App.Arguments.Contains("--initialize-browser"))
+            {
+                var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(paths.Root, "browser"));
+                await Chat.EnsureCoreWebView2Async(environment); browserReady = true;
+                await ReleaseBrowserForCleanupAsync();
+            }
+            AppPaths.AtomicWrite(report, "{\"status\":\"PASS\",\"applicationStayedOpen\":true,\"projectPreserved\":true,\"gpuStarted\":false}");
+        }
+        catch (Exception error) { AppPaths.AtomicWrite(report, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.ToString() })); }
+    }
     private void SmokeGpuProfiles(string report)
     {
         try
@@ -223,6 +289,7 @@ public partial class MainWindow : Window
         ProjectButton.IsEnabled = available;
         ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
+        GitHubButton.IsEnabled = ContextChoice.IsEnabled;
         ModeChoice.IsEnabled = ContextChoice.IsEnabled;
         if (ModeChoice.Items[1] is System.Windows.Controls.ComboBoxItem nativeChoice) nativeChoice.IsEnabled = !GpuProfiles.Is3090(settings);
         StorageButton.IsEnabled = ContextChoice.IsEnabled;
@@ -360,6 +427,12 @@ public partial class MainWindow : Window
         if (runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) { NinferVisionCheck.IsChecked = settings.NinferVision; return; }
         settings.NinferVision = NinferVisionCheck.IsChecked == true; paths.SaveSettings(settings); UpdateConfigurationSummary();
     }
+    private void GitHub_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        new GitHubWindow(paths, settings, http) { Owner = this }.ShowDialog();
+        RefreshControls();
+    }
     private void Advanced_Click(object sender, RoutedEventArgs e)
     {
         if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
@@ -432,8 +505,21 @@ public partial class MainWindow : Window
         if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
         var window = new StorageWindow(paths, settings, releaseBrowser: ReleaseBrowserForCleanupAsync) { Owner = this };
         window.ShowDialog();
-        if (window.RequiresRestart) { Close(); return; }
-        ApplyModeToUi(); RefreshControls();
+        if (window.DataDeleted) RefreshAfterStorageCleanup(window.SettingsDeleted);
+        else { ApplyModeToUi(); RefreshControls(); }
+    }
+    private void RefreshAfterStorageCleanup(bool settingsDeleted)
+    {
+        preparationPaused = false;
+        if (settingsDeleted)
+        {
+            settings = new(); LicenseCheck.IsChecked = false;
+            ApplyHardwareProfile();
+        }
+        Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible;
+        UpdateProject(); ApplyModeToUi(); RefreshControls();
+        StatusLabel.Text = "Limpieza completada. Forja sigue abierta; podés preparar la IA de nuevo.";
+        DetailLabel.Text = settingsDeleted ? "Se restauraron los ajustes iniciales. Los archivos de tus proyectos se conservaron." : "Se eliminaron solo las categorías confirmadas.";
     }
     private async Task ReleaseBrowserForCleanupAsync()
     {
@@ -443,7 +529,18 @@ public partial class MainWindow : Window
         void OnExited(object? sender, CoreWebView2BrowserProcessExitedEventArgs args) => exited.TrySetResult();
         environment.BrowserProcessExited += OnExited;
         try { Chat.Dispose(); browserReady = false; await exited.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
-        finally { environment.BrowserProcessExited -= OnExited; }
+        finally
+        {
+            environment.BrowserProcessExited -= OnExited;
+            if (Chat.Parent is System.Windows.Controls.Panel parent)
+            {
+                var index = parent.Children.IndexOf(Chat);
+                parent.Children.Remove(Chat);
+                UnregisterName("Chat");
+                Chat = new Microsoft.Web.WebView2.Wpf.WebView2 { Name = "Chat", Visibility = Visibility.Collapsed };
+                RegisterName("Chat", Chat); parent.Children.Insert(index, Chat);
+            }
+        }
     }
     private void UpdateProject()
     {
@@ -605,8 +702,11 @@ public partial class MainWindow : Window
     }
     private async Task FinishClosingAsync()
     {
-        if (App.Argument("--smoke-close") is null && (busy || runtime.State is RuntimeState.Ready or RuntimeState.Loading) && MessageBox.Show(this, "¿Detener la IA y salir? Tus chats y archivos se conservan.", "Forja 50", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-        { closing = false; RefreshControls(); return; }
+        var confirmed = closeConfirmationForTest?.Invoke() ?? MessageBox.Show(this,
+            "¿Querés cerrar Forja? Se detendrá la IA, se liberará su memoria y se pausarán las descargas. Tus proyectos y chats se conservan.",
+            "Cerrar Forja 50", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+        if (!confirmed)
+        { pendingInstaller = null; closing = false; RefreshControls(); return; }
         operation?.Cancel(); healthTimer.Stop();
         try
         {

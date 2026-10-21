@@ -12,6 +12,7 @@ if (args.Contains("--early-exit-fixture"))
 }
 if (args.Contains("--integration")) return await Integration.RunAsync(args);
 if (args.Contains("--context-probe")) return await ContextProbe.RunAsync(args);
+if (args.Contains("--github-component-probe")) return await GitHubProbe.RunAsync();
 
 if (args.Contains("--update-probe"))
 {
@@ -101,6 +102,7 @@ DownloadAsset Asset(byte[] bytes) => new("test", "Prueba", "https://example.inva
 await DownloadTests.RunAsync(root, Assert, Test);
 await StorageCleanupTests.RunAsync(root, Assert, Test);
 await Rtx3090Tests.RunAsync(root, Assert, Test);
+await GitHubTests.RunAsync(root, Assert, Test);
 
 await Test("Hardware: admitir solo las tres placas de escritorio con su memoria", () =>
 {
@@ -301,6 +303,10 @@ await Test("Actualizador: versiones, canales, paquetes y origen", () =>
     Assert(AppUpdates.Select("[" + Release("0.1.10", false) + "]", "0.1.10-dev", false)?.Version == "0.1.10", "No se promovió dev a estable.");
     Assert(AppUpdates.Select("[" + Release("0.1.10-dev", url: "https://example.invalid/evil.exe") + "]", "0.1.5-dev", false) is null, "Se aceptó un ejecutable externo.");
     Assert(AppUpdates.Select("[" + Release("0.1.10-dev", digest: "sha256:bad") + "]", "0.1.5-dev", false) is null, "Se aceptó un paquete sin hash válido.");
+    var renamed = releases.Replace("Mi-IA-Local-", "Forja-50-").Replace("-win-x64.zip", "-Portable-win-x64.zip");
+    Assert(AppUpdates.Select(renamed, "0.1.5-dev", false)?.Asset.FileName == "Forja-50-0.1.10-dev-Setup.exe", "No se reconoció el Setup renombrado.");
+    Assert(AppUpdates.Select(renamed, "0.1.5-dev", true)?.Asset.FileName == "Forja-50-0.1.10-dev-Portable-win-x64.zip", "No se reconoció el portable renombrado.");
+    Assert(AppUpdates.Select(releases.Replace(AppUpdates.ReleasesUrl, AppUpdates.LegacyReleasesUrl), "0.1.5-dev", false) is not null, "Se perdió la compatibilidad con paquetes anteriores.");
     return Task.CompletedTask;
 });
 await Test("Actualizador: consulta GitHub sin credenciales y maneja acceso privado", async () =>

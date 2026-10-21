@@ -95,6 +95,12 @@ jobs:
 
             Setup agrupa carpeta de instalacion, acceso directo al escritorio (marcado por defecto) y abrir al terminar en una sola pantalla. El modelo se descarga despues desde Forja.
 
+            Cuenta de GitHub: autorizacion en el navegador mediante Git Credential Manager oficial, sesion cifrada con Windows DPAPI en un almacen propio y cierre de sesion independiente. Opcional: no descarga modelos ni requiere iniciar la IA. El agente usa esa sesion para HTTPS sin modificar la configuracion global de Git.
+
+            Paquetes Forja-50: Setup y Portable-win-x64. El nuevo actualizador reconoce tambien los nombres anteriores. Debido al cambio de URL del repositorio, las versiones hasta 0.2.2 pueden necesitar actualizar manualmente una vez.
+
+            Borrar todos los datos desde almacenamiento ya no cierra Forja: reinicia la vista y conserva los proyectos. Al cerrar la app se pide confirmacion con No por defecto; solo confirmar cancela operaciones y detiene la IA antes de salir.
+
             Administrar almacenamiento permite elegir modelos, componentes, cache, conversaciones y ajustes, con rutas, espacio y confirmacion. El desinstalador ofrece abrir esa misma limpieza; conservar datos es la opcion inicial y la desinstalacion silenciosa los conserva. Los archivos importados, enlaces y repositorios Git quedan protegidos.
 
             La prueba de inferencia del nuevo motor nativo queda pendiente en ambas placas. Las pruebas historicas de la 5080 corresponden a KVMem. Pendientes tambien Windows limpio y uso prolongado. Los paquetes todavia no tienen firma de editor. Revisar las licencias del modelo y los componentes antes de usarlos.

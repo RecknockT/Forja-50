@@ -18,7 +18,8 @@ public sealed class StorageWindow : Window
     public Task Ready => ready.Task;
     public int SelectedCount => choices.Count(pair => pair.Value.IsChecked == true);
     public bool SettingsDeleted { get; private set; }
-    public bool RequiresRestart { get; private set; }
+    public bool RequiresRefresh { get; private set; }
+    public bool DataDeleted { get; private set; }
 
     public StorageWindow(AppPaths paths, AppSettings settings, bool uninstall = false, Func<Task>? releaseBrowser = null)
     {
@@ -33,7 +34,7 @@ public sealed class StorageWindow : Window
         header.Children.Add(new TextBlock { Text = "Administrar almacenamiento", FontSize = 24, Margin = new(0, 0, 0, 12) });
         header.Children.Add(new TextBlock {
             Text = (uninstall ? "Elegí qué eliminar antes de desinstalar. Cerrar esta ventana conserva los datos restantes.\n\n" : "La IA debe estar detenida. Elegí qué eliminar; podrás descargar los componentes de nuevo.\n\n")
-                + "Los archivos importados, los repositorios Git y la carpeta de proyecto están protegidos. Solo se borran los archivos de Forja que confirmes. Si eliminás conversaciones o ajustes, Forja se cerrará; volvé a abrirla para continuar.",
+                + "Los archivos importados, los repositorios Git y la carpeta de proyecto están protegidos. Solo se borran los archivos de Forja que confirmes. Si eliminás conversaciones o ajustes, se reiniciará la vista y Forja seguirá abierta.",
             TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 18) });
         var footer = new StackPanel(); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
         footer.Children.Add(status);
@@ -80,13 +81,13 @@ public sealed class StorageWindow : Window
         {
             if (selected.Any(e => e.Category is StorageCategory.Conversations or StorageCategory.Settings))
             {
-                RequiresRestart = true;
                 if (releaseBrowser is not null) await releaseBrowser();
             }
             await Task.Run(() => cleanup.Delete(selected.Select(e => e.Category)));
             SettingsDeleted |= selected.Any(e => e.Category == StorageCategory.Settings);
+            RequiresRefresh |= selected.Any(e => e.Category is StorageCategory.Conversations or StorageCategory.Settings);
+            DataDeleted = true;
             working = false;
-            if (RequiresRestart) { Close(); return; }
             await ReloadAsync(); status.Text = "Limpieza completada. Los archivos protegidos se conservaron.";
         }
         catch (Exception ex) { status.Text = "La limpieza no se pudo completar: " + ex.Message + " Los archivos restantes se conservan."; }

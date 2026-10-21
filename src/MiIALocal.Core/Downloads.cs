@@ -326,6 +326,7 @@ public sealed class Provisioner(AppPaths paths, VerifiedDownloader downloader)
         try { GpuProfiles.ValidateBackend(settings); }
         catch (InvalidDataException) { return false; }
         return File.Exists(paths.AgentExe) && File.Exists(paths.GitExe) && File.Exists(paths.NodeExe) && File.Exists(paths.ActiveModelPath(settings))
+            && (GitHubConnection.SavedAccount(paths) is null || File.Exists(paths.GitHubCredentialExe))
             && (settings.EngineMode == EngineMode.NInfer5080 ? paths.HasNinferEngine(settings) : File.Exists(paths.KvMemEngineExe(settings)));
     }
     public async Task PrepareAsync(AppSettings settings, IProgress<PreparationProgress>? progress, CancellationToken ct)
@@ -333,9 +334,22 @@ public sealed class Provisioner(AppPaths paths, VerifiedDownloader downloader)
         GpuProfiles.ValidateBackend(settings);
         if (!settings.LicenseAccepted) throw new InvalidOperationException("Revisá las licencias y confirmá su aceptación antes de descargar.");
         if (settings.EngineMode == EngineMode.NInfer5080 && !string.IsNullOrWhiteSpace(settings.NinferEnginePath) && !paths.HasNinferEngine(settings)) throw new InvalidOperationException("No se encuentra el motor importado. Elegí un archivo válido o restaurá el motor automático.");
-        foreach (var asset in ReleaseProfile.ComponentsFor(settings))
+        await PrepareComponentsAsync(ReleaseProfile.ComponentsFor(settings).Where(asset => asset != ReleaseProfile.NativeEngine || string.IsNullOrWhiteSpace(settings.NinferEnginePath)), progress, ct);
+        if (GitHubConnection.SavedAccount(paths) is not null) await PrepareComponentsAsync([ReleaseProfile.GitHubCredentialManager], progress, ct);
+        progress?.Report(new("Comprobando el modelo"));
+        var modelAsset = ReleaseProfile.ModelFor(settings.EngineMode);
+        if (!string.IsNullOrWhiteSpace(paths.ImportedModelPath(settings)))
         {
-            if (asset == ReleaseProfile.NativeEngine && !string.IsNullOrWhiteSpace(settings.NinferEnginePath)) continue;
+            if (!await VerifiedDownloader.MatchesAsync(paths.ActiveModelPath(settings), modelAsset, ct)) throw new InvalidDataException("El archivo elegido no es el modelo de esta versión o está incompleto.");
+        }
+        else await downloader.DownloadAsync(modelAsset, paths.ActiveModelPath(settings), progress, ct);
+        paths.SaveSettings(settings);
+    }
+    public Task PrepareGitHubAsync(IProgress<PreparationProgress>? progress, CancellationToken ct) => PrepareComponentsAsync([ReleaseProfile.Git, ReleaseProfile.GitHubCredentialManager], progress, ct);
+    private async Task PrepareComponentsAsync(IEnumerable<DownloadAsset> assets, IProgress<PreparationProgress>? progress, CancellationToken ct)
+    {
+        foreach (var asset in assets)
+        {
             var archive = Path.Combine(paths.Downloads, asset.FileName);
             await downloader.DownloadAsync(asset, archive, progress, ct);
             var target = Path.Combine(paths.Runtime, asset.Id);
@@ -355,14 +369,6 @@ public sealed class Provisioner(AppPaths paths, VerifiedDownloader downloader)
             if (Directory.Exists(target)) Directory.Move(target, target + ".previous-" + Guid.NewGuid().ToString("N"));
             Directory.Move(staging, target);
         }
-        progress?.Report(new("Comprobando el modelo"));
-        var modelAsset = ReleaseProfile.ModelFor(settings.EngineMode);
-        if (!string.IsNullOrWhiteSpace(paths.ImportedModelPath(settings)))
-        {
-            if (!await VerifiedDownloader.MatchesAsync(paths.ActiveModelPath(settings), modelAsset, ct)) throw new InvalidDataException("El archivo elegido no es el modelo de esta versión o está incompleto.");
-        }
-        else await downloader.DownloadAsync(modelAsset, paths.ActiveModelPath(settings), progress, ct);
-        paths.SaveSettings(settings);
     }
     private static async Task<bool> ValidateInstalledAsync(string root, string marker, CancellationToken ct)
     {

@@ -70,6 +70,7 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
                 ["OPENCODE_DISABLE_SHARE"] = "true", ["DO_NOT_TRACK"] = "1", ["OTEL_SDK_DISABLED"] = "true",
                 ["PATH"] = Path.GetDirectoryName(paths.GitExe) + ";" + Path.GetDirectoryName(paths.NodeExe) + ";" + Environment.GetEnvironmentVariable("PATH")
             };
+            foreach (var (key, value) in GitHubConnection.GitEnvironment(paths)) environment[key] = value;
             agent = OwnedProcess.Start(paths.AgentExe, ["serve", "--hostname", "127.0.0.1", "--port", AgentPort.ToString(), "--pure"], selectedProject, NewLog("agente"), environment);
             var auth = "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("opencode:" + AgentPassword));
             await agent.WaitForReadyAsync(client, new($"http://127.0.0.1:{AgentPort}/global/health"), auth, TimeSpan.FromMinutes(1), ct);

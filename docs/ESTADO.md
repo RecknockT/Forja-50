@@ -1,6 +1,16 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.2.2.
+21 de octubre de 2026 · desarrollo 0.2.3.
+
+## Cuenta GitHub, paquetes y cierre
+
+- Apartado Cuenta de GitHub: prepara Git/GCM sin modelo ni inferencia, OAuth mediante navegador, estado de cuenta local y cierre de sesión propio. GCM 3.0.1 fijado por SHA-256 y tamaño. Almacén Windows DPAPI separado, sin modificar Git global ni registrar salida privada de autenticación. El agente usa el helper únicamente para GitHub HTTPS; SSH y autenticación externa sin sesión de Forja conservan su flujo.
+- Sesión de GitHub como sexta categoría de almacenamiento. Cerrar sesión borra solo su almacén/caché de cuenta y no revoca permisos en GitHub. Se conservan proyectos y credenciales de otros programas. Preparar la IA restaura el gestor si una sesión guardada lo requiere.
+- Repositorio canónico `RecknockT/Forja-50`; Setup y portable pasan a llamarse `Forja-50-VERSION-Setup.exe` y `Forja-50-VERSION-Portable-win-x64.zip`. El nuevo actualizador acepta nombres y URLs anteriores conocidos, manteniendo validación de origen/tamaño/hash. Las versiones hasta 0.2.2 pueden necesitar una actualización manual por su validación estricta del nombre anterior del repositorio.
+- Corregido el cierre al limpiar conversaciones/ajustes: libera el navegador, espera su salida, reemplaza el control descartado y reinicia la vista sin cerrar Forja. Al eliminar ajustes restaura valores iniciales; los proyectos permanecen en su carpeta.
+- Cerrar Forja siempre pide confirmación con No inicial. Rechazar conserva operaciones; confirmar pausa/cancela preparación y detiene procesos propios antes de salir. Un rechazo también descarta una actualización pendiente, evitando abrir su instalador en un cierre posterior.
+- 58 comprobaciones del núcleo y 13 de ventanas/configuración aprobadas, sin advertencias ni errores de compilación: sesión, migración de paquetes, limpieza completa, reinicio de vista y cierre aceptado/rechazado. Prueba adicional local con GCM y Git reales: credencial ficticia cifrada con DPAPI en una ruta con espacios, Unicode y caracteres especiales; helper HTTPS y cierre de sesión aprobados sin OAuth ni acceso a repositorios. Prueba con WebView2 vacío: borrar todo y volver a crear el navegador sin cerrar la aplicación aprobada. No se descargaron pesos ni se inició inferencia.
+- Autorización OAuth real: pendiente de que el usuario complete el navegador. No se tomó control de su sesión de GitHub ni se instaló Forja durante estas pruebas.
 
 ## RTX 3090 y Setup unificado
 
@@ -25,7 +35,7 @@ La [revisión del 21 de octubre](REVISION-2026-10-21.md) compara la base actual 
 - El borrado se limita a modelos conocidos, componentes, descargas/parciales, actualizaciones, datos del agente/navegador, ajustes y registros. Se protegen importaciones, proyectos, repositorios Git y enlaces. Se vuelve a validar el plan antes de borrar, sin seguir enlaces durante el recorrido.
 - 53 pruebas de núcleo y 8 comprobaciones de ventana/configuración aprobadas. Las nuevas cubren selección por categoría, cancelación, instancia ocupada, repositorios anidados, worktrees, proyecto sin Git, importaciones, junction agregada tras inspección y preservación de archivos ajenos.
 - Prueba local adicional aprobada: iniciar un navegador integrado vacío, cerrarlo, esperar la salida de sus procesos y borrar su caché. Sin carga de modelo ni inferencia. Setup 0.2.1 compilado; no se instaló sobre la instalación manual del usuario.
-- [v0.2.1-dev publicada](https://github.com/RecknockT/Mi-IA-Local/releases/tag/v0.2.1-dev) desde `2508014c8fc5c42a770d86ee2b1474f66b3a0ac5`, con CI de main y etiqueta aprobados. Setup, portable y manifiesto descargados y verificados por tamaño/SHA-256. La ventana de limpieza del portable publicado conservó los datos al cancelar y rechazó una instancia ocupada; el actualizador público detectó ambos paquetes.
+- [v0.2.1-dev publicada](https://github.com/RecknockT/Forja-50/releases/tag/v0.2.1-dev) desde `2508014c8fc5c42a770d86ee2b1474f66b3a0ac5`, con CI de main y etiqueta aprobados. Setup, portable y manifiesto descargados y verificados por tamaño/SHA-256. La ventana de limpieza del portable publicado conservó los datos al cancelar y rechazó una instancia ocupada; el actualizador público detectó ambos paquetes.
 
 ## Integración nativa y descargas
 
@@ -37,7 +47,7 @@ La [revisión del 21 de octubre](REVISION-2026-10-21.md) compara la base actual 
 - Medición acotada de los mismos 64 MiB en esta conexión: una conexión 18,79 MB/s (3,58 s); dieciséis 24,18 MB/s (2,78 s). No es un benchmark del archivo completo ni una velocidad garantizada.
 - Vista previa nativa y configuración inicial revisadas con datos aislados, sin cargar el modelo ni iniciar inferencia.
 - Motor Windows compilado y publicado desde la revisión aee9106. Paquete de 243.616.338 bytes verificado por tamaño, SHA-256, procedencia y licencias; `ninfer-serve.exe --help` aprobado en esta PC sin cargar pesos. Preparación automática integrada, con importación opcional y restauración al motor administrado.
-- [v0.2.0-dev publicada](https://github.com/RecknockT/Mi-IA-Local/releases/tag/v0.2.0-dev): Setup, portable y manifiesto generados desde `cd74f748f1cdf28bfad3ebd4e86f054d342b8ad1`, con los controles de main y etiqueta aprobados. Se descargaron los tres assets y se verificaron tamaño, SHA-256 y coincidencia con el manifiesto.
+- [v0.2.0-dev publicada](https://github.com/RecknockT/Forja-50/releases/tag/v0.2.0-dev): Setup, portable y manifiesto generados desde `cd74f748f1cdf28bfad3ebd4e86f054d342b8ad1`, con los controles de main y etiqueta aprobados. Se descargaron los tres assets y se verificaron tamaño, SHA-256 y coincidencia con el manifiesto.
 - Portable publicado abierto con datos nuevos: motor nativo seleccionado, 64K y visión apagada; sin pesos incluidos ni inferencia. El actualizador público detectó tanto Setup como portable de 0.2.0-dev con sus hashes. El Setup nuevo fue compilado y verificado, pero no se instaló sobre la instalación manual del usuario.
 - Prueba física de inferencia del nuevo backend: pendiente por pedido del usuario en ambas placas. Los resultados históricos de abajo corresponden a KVMem/Swift.
 

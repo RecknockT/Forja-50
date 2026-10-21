@@ -1,6 +1,6 @@
 namespace MiIALocal.Core;
 
-public enum StorageCategory { Models, Components, Downloads, Conversations, Settings }
+public enum StorageCategory { Models, Components, Downloads, Conversations, Settings, GitHub }
 public sealed record StorageEntry(StorageCategory Category, string Title, string[] Paths, long Bytes, string? BlockedReason);
 
 /// <summary>Deletes only known application data. Imported assets, projects and links are protected.</summary>
@@ -38,7 +38,8 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
             Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime]),
             Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials)),
             Entry(StorageCategory.Conversations, "Conversaciones y datos del agente", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md" }.Select(p => Path.Combine(paths.Root, p))),
-            Entry(StorageCategory.Settings, "Configuración y registros", configuration)
+            Entry(StorageCategory.Settings, "Configuración y registros", configuration),
+            Entry(StorageCategory.GitHub, "Sesión de GitHub de Forja", [paths.GitHubCredentialStore, paths.GitHubAccountFile])
         ];
     }
     private StorageEntry Entry(StorageCategory category, string title, IEnumerable<string> candidates)

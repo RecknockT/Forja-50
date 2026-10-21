@@ -4,7 +4,7 @@
 
 Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. RTX 5070 Ti y RTX 5080 de escritorio (16 GB), o RTX 3090 (24 GB), con 32 GB de RAM.
 
-La versión 0.2.2 de desarrollo agrega un perfil RTX 3090 con KVMem para Ampere/sm86. Las RTX 50 conservan el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger y su modelo oficial Qwen3.8-27B. El instalador y el portable no contienen pesos ni compiladores: el programa descarga el motor preparado, herramientas y modelo después de instalar.
+La versión 0.2.3 de desarrollo incorpora un apartado de GitHub con autorización en el navegador y sesión cifrada independiente, paquetes renombrados a Forja-50, limpieza sin cerrar la aplicación y confirmación al salir. Conserva el perfil RTX 3090 con KVMem sm86 y los perfiles RTX 50 con el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger. El instalador y el portable no contienen pesos ni compiladores: el programa descarga motor, herramientas y modelo después de instalar.
 
 **Administrar almacenamiento** permite eliminar modelos, componentes, caché, conversaciones y ajustes, mostrando rutas y espacio y pidiendo confirmación. El desinstalador ofrece la misma limpieza opcional; conservar datos es la opción inicial. Los archivos importados, los proyectos y los repositorios Git quedan protegidos. Ver [limpieza y desinstalación](docs/PRIMEROS-PASOS.md#administrar-almacenamiento-y-desinstalar).
 
@@ -55,7 +55,7 @@ El SDK queda en `.tools`; las pruebas no descargan el modelo ni cargan la GPU. `
 .\scripts\Compilar.ps1 -Publicar -CompiladorInstalador "$PWD\.tools\inno\ISCC.exe"
 ```
 
-[Compilar Windows](https://github.com/RecknockT/Mi-IA-Local/actions/workflows/windows.yml) ejecuta las comprobaciones en GitHub. Una etiqueta coincidente con `ReleaseProfile.Version`, por ejemplo `v0.2.1-dev`, genera una prerelease con Setup, portable y manifiesto de integridad.
+[Compilar Windows](https://github.com/RecknockT/Forja-50/actions/workflows/windows.yml) ejecuta las comprobaciones en GitHub. Una etiqueta coincidente con `ReleaseProfile.Version`, por ejemplo `v0.2.1-dev`, genera una prerelease con Setup, portable y manifiesto de integridad.
 
 El [workflow del motor nativo](.github/workflows/native-engine.yml) compila la revisión inmutable y las herramientas declaradas en `build/ninfer-windows.lock.json`. Usa componentes CUDA portables con hashes oficiales y MSVC 14.44 en un runner Windows; no instala controladores en la PC del usuario. Comprobar `--help` no equivale a validar inferencia.
 

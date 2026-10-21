@@ -6,7 +6,7 @@
   #define SetupOutput "..\artifacts"
 #endif
 #ifndef AppVersionText
-  #define AppVersionText "0.2.2-dev"
+  #define AppVersionText "0.2.3-dev"
 #endif
 [Setup]
 AppId={{9AD610A8-C95C-460B-B5BD-2F45CC736DC0}
@@ -26,7 +26,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.22000
 OutputDir={#SetupOutput}
-OutputBaseFilename=Mi-IA-Local-{#AppVersionText}-Setup
+OutputBaseFilename=Forja-50-{#AppVersionText}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

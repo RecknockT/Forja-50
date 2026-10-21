@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 param([switch]$Publicar, [string]$CompiladorInstalador)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -18,6 +18,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Las pruebas fallaron.' }
 & (Join-Path $PSScriptRoot 'Verificar-Cierre.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Configuracion.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Perfiles.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
+& (Join-Path $PSScriptRoot 'Verificar-CuentaYLimpieza.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Almacenamiento.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 if (!$Publicar) { return }
 $output = Join-Path $projectRoot ('artifacts\paquete-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -27,7 +28,7 @@ if ($LASTEXITCODE -ne 0) { throw 'La publicación falló.' }
 if (Get-ChildItem -LiteralPath $appDirectory -Recurse -File | Where-Object { $_.Extension -in '.ninfer','.part' }) { throw 'El paquete contiene archivos de modelo inesperados.' }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIMEROS-PASOS.md') -Destination $appDirectory
 [IO.File]::WriteAllText((Join-Path $appDirectory 'portable.flag'), 'Los datos se guardan en la carpeta datos junto al ejecutable.')
-$zip = Join-Path $output "Mi-IA-Local-$version-win-x64.zip"
+$zip = Join-Path $output "Forja-50-$version-Portable-win-x64.zip"
 Compress-Archive -LiteralPath $appDirectory -DestinationPath $zip
 $hash = Get-FileHash -LiteralPath $zip -Algorithm SHA256
 $hash | Format-List
@@ -36,7 +37,7 @@ if ($CompiladorInstalador) {
     if (!(Test-Path -LiteralPath $CompiladorInstalador)) { throw 'No existe el compilador de Inno Setup indicado.' }
     & $CompiladorInstalador /Q "/DAppSource=$appDirectory" "/DSetupOutput=$output" "/DAppVersionText=$version" (Join-Path $projectRoot 'installer\MiIALocal.iss')
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el instalador.' }
-    $setup = Get-Item -LiteralPath (Join-Path $output "Mi-IA-Local-$version-Setup.exe")
+    $setup = Get-Item -LiteralPath (Join-Path $output "Forja-50-$version-Setup.exe")
     $manifest | Add-Member -NotePropertyName Setup -NotePropertyValue ([pscustomobject]@{File=$setup.Name;Bytes=$setup.Length;Sha256=(Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant();Signed=$false})
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $output 'paquete.json') -Encoding UTF8
