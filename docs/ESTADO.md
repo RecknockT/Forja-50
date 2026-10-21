@@ -9,6 +9,7 @@
 - El borrado se limita a modelos conocidos, componentes, descargas/parciales, actualizaciones, datos del agente/navegador, ajustes y registros. Se protegen importaciones, proyectos, repositorios Git y enlaces. Se vuelve a validar el plan antes de borrar, sin seguir enlaces durante el recorrido.
 - 53 pruebas de núcleo y 8 comprobaciones de ventana/configuración aprobadas. Las nuevas cubren selección por categoría, cancelación, instancia ocupada, repositorios anidados, worktrees, proyecto sin Git, importaciones, junction agregada tras inspección y preservación de archivos ajenos.
 - Prueba local adicional aprobada: iniciar un navegador integrado vacío, cerrarlo, esperar la salida de sus procesos y borrar su caché. Sin carga de modelo ni inferencia. Setup 0.2.1 compilado; no se instaló sobre la instalación manual del usuario.
+- [v0.2.1-dev publicada](https://github.com/RecknockT/Mi-IA-Local/releases/tag/v0.2.1-dev) desde `2508014c8fc5c42a770d86ee2b1474f66b3a0ac5`, con CI de main y etiqueta aprobados. Setup, portable y manifiesto descargados y verificados por tamaño/SHA-256. La ventana de limpieza del portable publicado conservó los datos al cancelar y rechazó una instancia ocupada; el actualizador público detectó ambos paquetes.
 
 ## Integración nativa y descargas
 
