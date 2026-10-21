@@ -1,6 +1,15 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.2.
+21 de octubre de 2026 · desarrollo 0.3.3.
+
+## Referencias en línea y exportación 0.3.3
+
+- Crear imagen puede buscar una referencia en Wikipedia (opción visible y desactivable). Detección sencilla del nombre, término editable, preferencia por fichas de personajes y selección cuando no hay coincidencia clara. No es un buscador de toda la web ni otro LLM.
+- Imagen real enviada a FLUX sin sustituir el pedido original. Fuente y término persistidos en el trabajo; editar/animar conservan la referencia elegida, sin búsquedas nuevas. Sin claves, sin cuenta y sin acceso a credenciales GitHub.
+- Consulta y descarga acotadas, HTTPS, dominios permitidos, sin redirecciones, PNG/JPG comprobados, cancelación y tiempos de espera. Si falla la búsqueda, se informa antes de generar; se puede desactivar para trabajar sin conexión.
+- Corregido el formato DynamicCombo de SaveVideo: la API requiere entradas planas `format` y `format.codec`. El fallo observado ocurrió después de los 20 pasos de Wan, al exportar; no justificaba el aviso genérico de memoria.
+- Verificada exportación MP4/H264 con SaveVideo real y ocho fotogramas sintéticos, sin inicializar CUDA. Los errores ahora muestran nodo y detalle; solo los de memoria recomiendan reducir consumo.
+- Las generaciones realizadas por el usuario en la 5080 no validan la 5070 Ti ni la 3090 ni establecen un pico medido de VRAM.
 
 ## Interfaz visual 0.3.2
 

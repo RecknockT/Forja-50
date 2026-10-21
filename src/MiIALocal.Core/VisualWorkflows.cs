@@ -48,7 +48,8 @@ public static class VisualWorkflows
         else
         {
             Node("13", "CreateVideo", ("images", Link("12")), ("fps", 24.0));
-            Node("14", "SaveVideo", ("video", Link("13")), ("filename_prefix", prefix), ("format", new { format = "mp4", codec = new { codec = "h264" } }));
+            // ComfyUI's API accepts flattened DynamicCombo inputs; nesting silently drops format.
+            Node("14", "SaveVideo", ("video", Link("13")), ("filename_prefix", prefix), ("format", "mp4"), ("format.codec", "h264"));
             Node("15", "ForjaSaveGif", ("images", Link("12")), ("filename_prefix", prefix), ("fps", 24));
         }
         return graph;

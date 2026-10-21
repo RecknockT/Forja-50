@@ -30,6 +30,11 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox steps = new() { ItemsSource = new[] { "10 pasos · más rápido", "20 pasos · inicial", "30 pasos · más lento" }, SelectedIndex = 1 };
     private readonly CheckBox animation = new() { Content = "Descargar también Wan para animaciones y GIF" };
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
+    private readonly CheckBox webReferences = new() { Content = "Buscar referencia en internet (Wikipedia)" };
+    private readonly TextBox webSubject = new() { MaxLength = 100, ToolTip = "Opcional: escribí solo el personaje u objeto, por ejemplo Frieren. Vacío: se intenta detectar en tu descripción." };
+    private readonly TextBlock webStatus = new() { Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 8) };
+    private readonly Button webSource = new() { Content = "Ver origen de la referencia", HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed, FontSize = 12 };
+    private VisualReference? onlineReference;
     private readonly Button prepare = new() { Content = "Preparar imágenes" };
     private readonly Button generate = new() { Content = "Generar", Background = new SolidColorBrush(Color.FromRgb(8, 127, 112)), Foreground = Brushes.White };
     private readonly Button attach = new() { Content = "Elegir referencia" };
@@ -107,6 +112,14 @@ public sealed class VisualPane : UserControl
         var advanced = new StackPanel(); advanced.Children.Add(new TextBlock { Text = "Semilla: dejala vacía para variar cada resultado." }); advanced.Children.Add(seed);
         advanced.Children.Add(new TextBlock { Text = "Pasos de animación (no cambia los cuatro pasos de imágenes)." }); advanced.Children.Add(steps);
         editor.Children.Add(new Expander { Header = "Más opciones", Foreground = Brushes.LightGray, Content = advanced, Margin = new(0, 12, 0, 14) });
+        editor.Children.Add(webReferences);
+        var webOptions = new StackPanel();
+        webOptions.Children.Add(new TextBlock { Text = "Personaje u objeto (opcional; vacío = detectar en tu descripción)", FontSize = 12, Margin = new(0, 10, 0, 6) }); webOptions.Children.Add(webSubject);
+        webOptions.Children.Add(new TextBlock { Text = "Al crear una imagen se envía el término de búsqueda a Wikipedia y se descarga una referencia. Podés desactivarlo para trabajar sin conexión. Editar y animar usan la imagen que elegiste.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
+        editor.Children.Add(new Expander { Header = "Referencias en línea · opciones", Foreground = Brushes.White, Content = webOptions, Margin = new(0, 8, 0, 10) });
+        editor.Children.Add(webStatus); editor.Children.Add(webSource);
+        webReferences.Click += (_, _) => { settings().Visual.WebReferencesEnabled = webReferences.IsChecked == true; Save(); Refresh(); };
+        webSource.Click += (_, _) => { if (onlineReference is { } item && VisualReferenceSearch.AllowedPage(item.PageUrl)) OpenPath(item.PageUrl); };
         var references = new WrapPanel(); attach.Content = "Elegir una imagen"; clear.Content = "Quitar referencia"; references.Children.Add(attach); references.Children.Add(clear); editor.Children.Add(references);
         referenceLabel.Margin = new(0, 10, 0, 18); referenceLabel.FontSize = 12; editor.Children.Add(referenceLabel);
         generate.HorizontalAlignment = HorizontalAlignment.Left; generate.MinWidth = 180; editor.Children.Add(generate);
@@ -150,6 +163,7 @@ public sealed class VisualPane : UserControl
             if (file is null) { status("Este trabajo no tiene un resultado disponible; sus datos siguen en el historial."); return; }
             ShowResult(file);
             if (Path.GetExtension(file).Equals(".png", StringComparison.OrdinalIgnoreCase)) { SetReference(file); task.SelectedIndex = 1; }
+            ShowOnlineSource(item.Job.OnlineReference);
         };
         ReloadSettings(); LoadGallery();
     }
@@ -158,6 +172,7 @@ public sealed class VisualPane : UserControl
     {
         var visual = settings().Visual;
         animation.IsChecked = visual.IncludeAnimation; license.IsChecked = visual.LicenseAccepted;
+        webReferences.IsChecked = visual.WebReferencesEnabled;
         size.SelectedIndex = visual.Width > visual.Height ? 1 : visual.Height > visual.Width ? 2 : 0;
         duration.SelectedIndex = visual.AnimationFrames == 121 ? 1 : 0;
         steps.SelectedIndex = visual.AnimationSteps switch { 10 => 0, 30 => 2, _ => 1 };
@@ -187,6 +202,8 @@ public sealed class VisualPane : UserControl
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = available;
         size.IsEnabled = available && task.SelectedIndex != 2; duration.IsEnabled = available && task.SelectedIndex == 2;
         seed.IsEnabled = available; steps.IsEnabled = available && task.SelectedIndex == 2;
+        webReferences.IsEnabled = available && task.SelectedIndex == 0;
+        webSubject.IsEnabled = available && task.SelectedIndex == 0 && webReferences.IsChecked == true;
         size.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
@@ -217,14 +234,52 @@ public sealed class VisualPane : UserControl
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
             if (!string.IsNullOrWhiteSpace(seed.Text) && !long.TryParse(seed.Text, out chosenSeed)) throw new InvalidDataException("La semilla debe ser un número entero positivo o estar vacía.");
             var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps);
-            var job = await runtime.GenerateAsync(request, kind == VisualTask.Image ? null : reference, new Progress<PreparationProgress>(p => progress(p)), ct);
+            request.Validate();
+            var chosenReference = kind == VisualTask.Image ? null : reference;
+            VisualReference? discovered = kind == VisualTask.Image ? null : onlineReference;
+            if (kind == VisualTask.Image && visual.WebReferencesEnabled)
+            {
+                var subject = string.IsNullOrWhiteSpace(webSubject.Text) ? VisualReferenceSearch.SuggestSubject(request.Prompt) : webSubject.Text.Trim();
+                status("Buscando referencia: " + subject + "…"); webStatus.Text = "Buscando en Wikipedia: " + subject; onlineReference = null; webSource.Visibility = Visibility.Collapsed;
+                try
+                {
+                    using var search = new VisualReferenceSearch();
+                    var choices = await search.SearchAsync(subject, ct);
+                    discovered = VisualReferenceSearch.AutomaticMatch(choices, subject) ?? ChooseOnlineReference(choices);
+                    if (discovered is null) return;
+                    chosenReference = await search.DownloadAsync(discovered, paths.VisualInputs, ct);
+                    using (var input = File.OpenRead(chosenReference))
+                    { var decoder = BitmapDecoder.Create(input, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None); if (decoder.Frames[0].PixelWidth > 8192 || decoder.Frames[0].PixelHeight > 8192) throw new InvalidDataException("La referencia supera el tamaño admitido."); }
+                    LoadPreview(chosenReference); resultTitle.Text = "Referencia de internet";
+                    ShowOnlineSource(discovered);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or NotSupportedException or System.IO.FileFormatException)
+                { webStatus.Text = "No se pudo obtener una referencia. No se generó la imagen."; status("La búsqueda no se completó: " + ex.Message + " Podés corregir el término o desactivar la búsqueda para generar sin referencia."); return; }
+            }
+            else if (kind == VisualTask.Image) { onlineReference = null; webStatus.Text = "Creación sin búsqueda en internet."; webSource.Visibility = Visibility.Collapsed; }
+            var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
             LoadGallery();
             var file = job.Files.FirstOrDefault(f => Path.GetExtension(f) == ".png") ?? job.Files.First();
             ShowResult(file);
             if (kind != VisualTask.Animation) { SetReference(file); task.SelectedIndex = 1; }
+            ShowOnlineSource(job.OnlineReference);
             status(kind == VisualTask.Animation ? "Animación creada. Podés abrir el MP4 o guardar la versión GIF." : "Imagen creada. Pedí otro cambio o elegí Crear imagen para empezar otra.");
         }); }
         finally { generating = false; LoadGallery(); Refresh(); }
+    }
+    private VisualReference? ChooseOnlineReference(VisualReference[] choices)
+    {
+        if (choices.Length == 0) { webStatus.Text = "No encontramos una imagen de referencia. Probá escribir solo el nombre en Referencias en línea, o desactivá la búsqueda."; status(webStatus.Text); return null; }
+        var picker = new ComboBox { ItemsSource = choices, SelectedIndex = 0, Margin = new(0, 12, 0, 16) };
+        var body = new StackPanel { Margin = new(24) };
+        body.Children.Add(new TextBlock { Text = "¿A cuál te referís?", FontSize = 22, FontWeight = FontWeights.SemiBold });
+        body.Children.Add(new TextBlock { Text = "Encontramos varias referencias en Wikipedia. Elegí el personaje u objeto correcto.", Margin = new(0, 10, 0, 0) }); body.Children.Add(picker);
+        var buttons = new WrapPanel(); var use = new Button { Content = "Usar referencia", IsDefault = true }; var cancel = new Button { Content = "Volver", IsCancel = true }; buttons.Children.Add(use); buttons.Children.Add(cancel); body.Children.Add(buttons);
+        var dialog = new Window { Title = "Elegir referencia", Owner = Window.GetWindow(this), Content = body, Width = 520, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = new SolidColorBrush(Color.FromRgb(24, 35, 44)), Foreground = Brushes.White };
+        NativeWindowTheme.Attach(dialog); use.Click += (_, _) => dialog.DialogResult = true;
+        if (dialog.ShowDialog() == true) return picker.SelectedItem as VisualReference;
+        status("Generación cancelada antes de usar la GPU."); return null;
     }
     private void SetReference(string file)
     {
@@ -235,12 +290,15 @@ public sealed class VisualPane : UserControl
             if (decoder.Frames[0].PixelWidth > 8192 || decoder.Frames[0].PixelHeight > 8192) throw new IOException("La referencia supera 8192 píxeles por lado.");
             var frame = decoder.Frames[0];
             size.SelectedIndex = frame.PixelWidth > frame.PixelHeight ? 1 : frame.PixelHeight > frame.PixelWidth ? 2 : 0;
+            ShowOnlineSource(null);
             reference = file; referenceLabel.Text = "Imagen seleccionada: " + Path.GetFileName(file) + ". Escribí qué querés cambiar.";
             resultFile = IsOwnedExistingResult(file) ? file : null; LoadPreview(file); resultTitle.Text = "Imagen seleccionada"; Refresh();
         }
         catch (Exception ex) { status("No se pudo elegir la referencia: " + ex.Message); }
     }
     private bool IsOwnedExistingResult(string file) => StorageCleanup.Within(Path.GetFullPath(file), paths.VisualOutputs) && File.Exists(file);
+    private void ShowOnlineSource(VisualReference? source)
+    { onlineReference = source; webStatus.Text = source is null ? "" : "Referencia original: " + source.Title + " · Wikipedia"; webSource.Visibility = source is not null ? Visibility.Visible : Visibility.Collapsed; }
     private void ShowResult(string file)
     {
         if (!IsOwnedExistingResult(file)) return; resultFile = file; resultTitle.Text = "Tu resultado"; LoadPreview(file); Refresh();

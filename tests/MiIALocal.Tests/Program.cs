@@ -11,6 +11,17 @@ if (args.Contains("--early-exit-fixture"))
     return 0;
 }
 if (args.Contains("--integration")) return await Integration.RunAsync(args);
+if (args.Contains("--reference-probe"))
+{
+    using var search = new VisualReferenceSearch();
+    var subject = VisualReferenceSearch.SuggestSubject("generar frieren volando");
+    var choices = await search.SearchAsync(subject, default);
+    var selected = VisualReferenceSearch.AutomaticMatch(choices, subject) ?? throw new Exception("No se encontró el personaje de Frieren.");
+    var folder = Path.Combine(Environment.CurrentDirectory, "artifacts", "reference-probe");
+    var image = await search.DownloadAsync(selected, folder, default);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { selected.Title, selected.PageUrl, Image = image, Bytes = new FileInfo(image).Length }));
+    return 0;
+}
 if (args.Contains("--context-probe")) return await ContextProbe.RunAsync(args);
 if (args.Contains("--github-component-probe")) return await GitHubProbe.RunAsync();
 

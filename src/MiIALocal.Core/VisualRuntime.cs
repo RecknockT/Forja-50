@@ -42,7 +42,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         catch { await StopWorkerAsync(); throw; }
         finally { gate.Release(); }
     }
-    public async Task<VisualJob> GenerateAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct)
+    public async Task<VisualJob> GenerateAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null)
     {
         await gate.WaitAsync(ct);
         var store = new VisualJobStore(paths); VisualJob? job = null;
@@ -60,7 +60,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
                 input = Guid.NewGuid().ToString("N") + extension;
                 File.Copy(reference, Path.Combine(paths.VisualInputs, input));
             }
-            job = new() { Request = request, Reference = input, Status = "Generando" }; store.Save(job);
+            job = new() { Request = request, Reference = input, OnlineReference = onlineReference, Status = "Generando" }; store.Save(job);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(45));
             job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token);
             job.Status = "Completado"; store.Save(job); return job;
@@ -137,7 +137,7 @@ public sealed class ComfyClient
                 {
                     if (result.TryGetProperty("status", out var status))
                     {
-                        if (status.TryGetProperty("status_str", out var state) && state.GetString() == "error") throw new IOException("El motor no pudo completar la generación. Puede faltar memoria; revisá los registros y reducí la resolución o duración.");
+                        if (status.TryGetProperty("status_str", out var state) && state.GetString() == "error") throw new IOException(DescribeFailure(status));
                         if (status.TryGetProperty("completed", out var completed) && completed.GetBoolean()) return ReadFiles(result, outputRoot, id);
                     }
                 }
@@ -145,6 +145,24 @@ public sealed class ComfyClient
             }
         }
         finally { socketLifetime.Cancel(); socket.Abort(); try { await socketTask; } catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { } }
+    }
+    public static string DescribeFailure(JsonElement status)
+    {
+        if (status.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array)
+            foreach (var message in messages.EnumerateArray())
+            {
+                if (message.ValueKind != JsonValueKind.Array || message.GetArrayLength() < 2 || message[0].GetString() != "execution_error") continue;
+                var error = message[1];
+                var type = error.TryGetProperty("exception_type", out var exceptionType) ? exceptionType.GetString() ?? "" : "";
+                var detail = error.TryGetProperty("exception_message", out var exceptionMessage) ? exceptionMessage.GetString() ?? "" : "";
+                var node = error.TryGetProperty("node_type", out var nodeType) ? nodeType.GetString() ?? "" : "";
+                if (type.Contains("OutOfMemory", StringComparison.OrdinalIgnoreCase) || detail.Contains("out of memory", StringComparison.OrdinalIgnoreCase))
+                    return "El motor se quedó sin memoria. Cerrá otras aplicaciones que usen la GPU y reducí la resolución o duración; revisá Diagnóstico para ver el detalle.";
+                var brief = string.Join(' ', detail.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+                if (brief.Length > 350) brief = brief[..350] + "…";
+                return $"La generación falló en {(string.IsNullOrWhiteSpace(node) ? "el motor" : node)}: {(string.IsNullOrWhiteSpace(brief) ? type : brief)}. Revisá Diagnóstico para ver el registro completo.";
+            }
+        return "El motor no pudo completar la generación. Revisá Diagnóstico para conocer la causa; tus resultados anteriores se conservan.";
     }
     public static string[] ReadFiles(JsonElement result, string outputRoot, string id)
     {

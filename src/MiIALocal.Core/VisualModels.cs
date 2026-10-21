@@ -7,6 +7,7 @@ public sealed class VisualSettings
 {
     public bool LicenseAccepted { get; set; }
     public bool IncludeAnimation { get; set; }
+    public bool WebReferencesEnabled { get; set; } = true;
     public int Width { get; set; } = 1024;
     public int Height { get; set; } = 1024;
     public int AnimationFrames { get; set; } = 73;
@@ -62,6 +63,7 @@ public sealed class VisualJob
     public string? Error { get; set; }
     public VisualRequest Request { get; set; } = new(VisualTask.Image, "", 1024, 1024, 0);
     public string? Reference { get; set; }
+    public VisualReference? OnlineReference { get; set; }
     public string[] Files { get; set; } = [];
     public string WorkflowVersion { get; set; } = "forja-visual-1 / ComfyUI " + VisualCatalog.ComfyVersion;
 }

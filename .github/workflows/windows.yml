@@ -93,6 +93,8 @@ jobs:
 
             Interfaz visual guiada: Preparar, Crear o editar y Ver resultado. Acciones Crear imagen, Editar imagen y Animar; vista previa de referencia, detalles tecnicos plegados e historial oscuro. Pausa de descarga y cancelacion dentro del modo visual. Semilla, pasos de animacion y exportacion PNG/MP4/GIF. Un modo activo a la vez; cambio confirmado detiene el anterior. Resultados y referencias protegidos en almacenamiento. Motor visual local con credencial efimera y sin nodos de nube.
 
+            Desde 0.3.3, referencias opcionales de Wikipedia al crear imagen: termino detectado o editable, coincidencia de personaje preferida, seleccion ante ambiguedad y origen conservado en el historial. Sin claves de pago; desactivable para crear sin conexion. No recorre toda la web. Corregida la exportacion MP4 de ComfyUI 0.42.1 y los avisos genericos de memoria. MP4/H264 y GIF verificados con fotogramas sinteticos en CPU; la correccion completa de animacion requiere repetir la prueba real.
+
             MODO VISUAL EXPERIMENTAL: comprobados protocolo simulado, referencia, persistencia, autenticacion, GIF sintetico, extraccion 7z y ventanas. Inferencia real, descarga/extraccion del motor completo, VRAM/RAM y velocidad pendientes en las tres placas. No anunciar estos flujos como validados fisicamente.
 
             Incluye Setup y ZIP portable, tema oscuro, configuracion avanzada, perfiles automaticos para cada placa y actualizador. Motor NInfer nativo Windows basado en el fork de Todd Ballinger; modelo oficial Qwen3.8-27B de 16,5 GB descargado desde el programa. No incluye pesos en el instalador.

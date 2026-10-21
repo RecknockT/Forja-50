@@ -7,6 +7,56 @@ static class VisualTests
 {
     public static async Task RunAsync(string root, Action<bool, string> assert, Func<string, Func<Task>, Task> test)
     {
+        await test("Visual: referencias en línea detectan Frieren y distinguen personaje de serie", () =>
+        {
+            assert(VisualReferenceSearch.SuggestSubject("generar una imagen de frieren volando") == "frieren", "La búsqueda incluye la acción.");
+            assert(VisualReferenceSearch.SuggestSubject("Create an image of Frieren flying") == "Frieren", "La sugerencia en inglés incluye el pedido.");
+            assert(VisualReferenceSearch.SuggestSubject("") == "", "El pedido vacío falla.");
+            var series = new VisualReference("Frieren", "https://en.wikipedia.org/wiki/Frieren", "https://upload.wikimedia.org/series.jpg", "Frieren");
+            var character = series with { Title = "Frieren (character)" };
+            assert(VisualReferenceSearch.AutomaticMatch([series, character], "frieren") == character, "Se usa la portada de la serie en lugar del personaje.");
+            assert(!VisualReferenceSearch.AllowedImage("http://127.0.0.1/file") && !VisualReferenceSearch.AllowedImage("https://upload.wikimedia.org.evil.test/a.png") && !VisualReferenceSearch.AllowedImage("https://user@upload.wikimedia.org/a.png"), "Referencia externa insegura.");
+            return Task.CompletedTask;
+        });
+        await test("Visual: búsqueda real del protocolo, imagen acotada y procedencia persistente", async () =>
+        {
+            var sawQuery = false;
+            using var search = new VisualReferenceSearch(new AsyncHandler((request, _) =>
+            {
+                if (request.RequestUri!.Host == "en.wikipedia.org")
+                { sawQuery = request.RequestUri.Query.Contains("gsrsearch=Frieren") && request.Headers.Authorization is null; return Task.FromResult(Json(new { query = new { pages = new[] { new { title = "Frieren (character)", fullurl = "https://en.wikipedia.org/wiki/Frieren_(character)", thumbnail = new { source = "https://upload.wikimedia.org/frieren.png" } } } } })); }
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([137, 80, 78, 71, 13, 10, 26, 10]) }; response.Content.Headers.ContentType = new("image/png"); return Task.FromResult(response);
+            }));
+            var reference = (await search.SearchAsync("Frieren", default)).Single();
+            var file = await search.DownloadAsync(reference, Path.Combine(root, "web-references"), default);
+            assert(sawQuery && File.Exists(file), "No se obtuvo la referencia por el protocolo previsto.");
+            var paths = new AppPaths(Path.Combine(root, "web-provenance")); var store = new VisualJobStore(paths); store.Save(new() { OnlineReference = reference });
+            assert(store.Read().Single().OnlineReference == reference, "Se perdió el origen de la referencia.");
+        });
+        await test("Visual: formatos falsos, redirecciones y cancelación no se convierten en referencias", async () =>
+        {
+            var reference = new VisualReference("Fixture", "https://en.wikipedia.org/wiki/Fixture", "https://upload.wikimedia.org/a.png", "Fixture");
+            using var invalid = new VisualReferenceSearch(new AsyncHandler((_, _) => Task.FromResult(Json(new { error = "not an image" }))));
+            try { await invalid.DownloadAsync(reference, root, default); throw new Exception("Se aceptó texto como imagen."); } catch (InvalidDataException) { }
+            using var redirected = new VisualReferenceSearch(new AsyncHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Redirect))));
+            try { await redirected.SearchAsync("Fixture", default); throw new Exception("Se aceptó una redirección."); } catch (HttpRequestException) { }
+            using var waiting = new VisualReferenceSearch(new AsyncHandler(async (_, ct) => { await Task.Delay(Timeout.Infinite, ct); return Json(new { }); }));
+            using var cancel = new CancellationTokenSource(50);
+            try { await waiting.SearchAsync("Fixture", cancel.Token); throw new Exception("Se ignoró la cancelación."); } catch (OperationCanceledException) { }
+        });
+        await test("Visual: exportación MP4 usa DynamicCombo plano y errores distinguen memoria", () =>
+        {
+            var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "Robot", 768, 448, 1), new string('a', 32)));
+            var inputs = graph.GetProperty("14").GetProperty("inputs");
+            assert(inputs.GetProperty("format").GetString() == "mp4" && inputs.GetProperty("format.codec").GetString() == "h264", "Formato incompatible con la API dinámica.");
+            using var typeError = JsonDocument.Parse("{\"messages\":[[\"execution_error\",{\"node_type\":\"SaveVideo\",\"exception_type\":\"TypeError\",\"exception_message\":\"missing format\"}]]}");
+            var message = ComfyClient.DescribeFailure(typeError.RootElement);
+            assert(message.Contains("SaveVideo") && message.Contains("missing format") && !message.Contains("sin memoria"), "Se atribuye un error de exportación a VRAM.");
+            using var oom = JsonDocument.Parse("{\"messages\":[[\"execution_error\",{\"exception_type\":\"torch.OutOfMemoryError\"}]]}");
+            assert(ComfyClient.DescribeFailure(oom.RootElement).Contains("sin memoria"), "Se perdió el diagnóstico de memoria.");
+            AppPaths.AtomicWrite(Path.Combine(root, "video-export-graph.json"), graph.GetRawText());
+            return Task.CompletedTask;
+        });
         await test("Visual: extracción 7z real y rechazo previo de rutas que escapan", () =>
         {
             var destination = Path.Combine(root, "visual-7z");
