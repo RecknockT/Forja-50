@@ -75,12 +75,39 @@ static class DownloadTests
             await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, default);
             assert(resumed && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "No se reanudó el fragmento parcial.");
         });
+        await test("Reanudar: no repetir fragmentos ya incorporados al prefijo", async () =>
+        {
+            var destination = Path.Combine(root, "consumed-cache.bin");
+            var directory = VerifiedDownloader.ChunkDirectory(asset, destination, options.ChunkBytes);
+            Directory.CreateDirectory(directory);
+            for (var start = options.ChunkBytes; start < bytes.Length; start += options.ChunkBytes)
+            {
+                var end = Math.Min(bytes.Length, start + options.ChunkBytes) - 1;
+                await File.WriteAllBytesAsync(Path.Combine(directory, $"{start}-{end}.bin"), bytes[start..(end + 1)]);
+            }
+            var requests = 0;
+            using var client = new HttpClient(new AsyncHandler((request, _) => {
+                assert(request.Headers.Range!.Ranges.Single().From == 0, "Se volvió a pedir un fragmento ya incorporado al prefijo.");
+                requests++; return Task.FromResult(Range(request));
+            }));
+            await new VerifiedDownloader(client, options with { Connections = 1 }).DownloadAsync(asset, destination, null, default);
+            assert(requests == 1 && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "La reanudación no reutilizó todo el caché.");
+        });
         await test("Paralelo: reanudar parcial creado por versión anterior", async () =>
         {
-            var destination = Path.Combine(root, "old-part.bin"); await File.WriteAllBytesAsync(destination + ".part", bytes[..9011]); var minimum = long.MaxValue;
-            using var client = new HttpClient(new AsyncHandler((request, _) => { minimum = Math.Min(minimum, request.Headers.Range!.Ranges.Single().From!.Value); return Task.FromResult(Range(request)); }));
-            await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, default);
-            assert(minimum == 9011 && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "Se perdió el progreso de la versión anterior.");
+            for (var iteration = 0; iteration < 100; iteration++)
+            {
+                var destination = Path.Combine(root, $"old-part-{iteration}.bin"); await File.WriteAllBytesAsync(destination + ".part", bytes[..9011]);
+                var resumedAtPrefix = 0;
+                using var client = new HttpClient(new AsyncHandler(async (request, _) => {
+                    var from = request.Headers.Range!.Ranges.Single().From!.Value;
+                    assert(from >= 9011, "Se volvió a descargar el prefijo guardado.");
+                    if (from == 9011) Interlocked.Exchange(ref resumedAtPrefix, 1);
+                    await Task.Yield(); return Range(request);
+                }));
+                await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, default);
+                assert(resumedAtPrefix == 1 && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "Se perdió el progreso de la versión anterior.");
+            }
         });
         await test("Paralelo: servidor sin Range vuelve a una conexión", async () =>
         {

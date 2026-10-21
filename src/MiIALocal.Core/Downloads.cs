@@ -152,7 +152,15 @@ public sealed class VerifiedDownloader(HttpClient client, DownloadOptions? optio
         meter.Report(done, total, 0, true);
         using var workers = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var appendGate = new SemaphoreSlim(1, 1);
-        var next = -1; var toAppend = 0;
+        var next = -1; var toAppend = 0; long committedPrefix = offset;
+        async Task CommitChunkAsync(string staging, string completed)
+        {
+            // MoveFileEx can expose the destination before releasing its Windows handle.
+            // Publish under the same gate as readers so another worker cannot open it mid-rename.
+            await appendGate.WaitAsync(workers.Token);
+            try { File.Move(staging, completed); }
+            finally { appendGate.Release(); }
+        }
         async Task AppendReadyAsync()
         {
             await appendGate.WaitAsync(workers.Token);
@@ -166,21 +174,24 @@ public sealed class VerifiedDownloader(HttpClient client, DownloadOptions? optio
                     await using (var output = new FileStream(partial, FileMode.Append, FileAccess.Write, FileShare.Read, 128 * 1024, true))
                     await using (var input = File.OpenRead(chunk.Path))
                     { await input.CopyToAsync(output, CancellationToken.None); await output.FlushAsync(CancellationToken.None); }
-                    File.Delete(chunk.Path); toAppend++;
+                    Interlocked.Exchange(ref committedPrefix, chunk.End + 1); toAppend++;
+                    File.Delete(chunk.Path);
                 }
             }
             finally { appendGate.Release(); }
         }
         async Task FetchAsync(Chunk chunk)
         {
-            if (File.Exists(chunk.Path)) return;
+            // On resume an earlier worker can already have appended and removed this cached
+            // chunk before its own worker starts. Read the prefix after the file check.
+            if (File.Exists(chunk.Path) || chunk.End < Interlocked.Read(ref committedPrefix)) return;
             var staging = chunk.Path + ".part";
             for (var attempt = 0; ; attempt++)
             {
                 try
                 {
                     var received = File.Exists(staging) ? new FileInfo(staging).Length : 0;
-                    if (received == chunk.Length) { File.Move(staging, chunk.Path); return; }
+                    if (received == chunk.Length) { await CommitChunkAsync(staging, chunk.Path); return; }
                     using var request = new HttpRequestMessage(HttpMethod.Get, asset.Url);
                     request.Headers.Range = new(chunk.Start + received, chunk.End);
                     using var response = await SendAsync(request, workers.Token);
@@ -202,7 +213,7 @@ public sealed class VerifiedDownloader(HttpClient client, DownloadOptions? optio
                         }
                         await output.FlushAsync(workers.Token);
                     }
-                    File.Move(staging, chunk.Path); return;
+                    await CommitChunkAsync(staging, chunk.Path); return;
                 }
                 catch (Exception ex) when (CanRetry(ex, workers.Token) && attempt < options.Retries)
                 { await RetryAsync(asset.Name, attempt, progress, workers.Token); }
