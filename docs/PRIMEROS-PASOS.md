@@ -21,3 +21,8 @@ Podés abrir los registros con **Diagnóstico y registros**. Conservá los mensa
 Usá Buscar actualizaciones en el panel izquierdo. El programa consulta Releases de GitHub y verifica tamaño y SHA-256 antes de usar el paquete. Las versiones de desarrollo siguen también las publicaciones preliminares. La instalación conserva modelos, chats y ajustes. El modelo y los motores solo cambian al preparar los componentes de una nueva versión; no se actualizan durante un chat.
 
 En Setup, al aceptar la actualización se descarga, se detiene la IA, se cierra la aplicación y se abre el instalador en la ubicación actual. En portable se descarga el ZIP: cerrá el programa, extraé en una carpeta nueva y copiá la carpeta datos anterior. Conservá el original hasta comprobar el funcionamiento. El botón Versiones en GitHub permite consultar notas o descargar manualmente si GitHub no responde o requiere iniciar sesión.
+
+## Pausar y reanudar
+Durante la preparación usá Pausar. Al terminar de guardar el progreso aparecerá Reanudar preparación. Podés cerrar y volver a abrir sin borrar lo descargado. Se conservan bloques completos, y puede repetirse hasta el último lote de 32 MiB. La descarga muestra MB/s y tiempo restante aproximado; una conexión sin datos durante 30 segundos se reintenta automáticamente hasta tres veces.
+
+Si venís de 0.1.5 o anterior y la descarga quedó trabada: pulsá Cancelar, esperá a que se detenga, buscá actualizaciones e instalá esta versión. Después pulsá Reanudar preparación. No borres el archivo .part ni cambies la ubicación del modelo durante ese proceso.

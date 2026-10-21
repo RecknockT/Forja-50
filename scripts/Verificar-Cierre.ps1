@@ -2,13 +2,14 @@
 param([Parameter(Mandatory=$true)][string]$Aplicacion)
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('MiIALocal-close-' + [Guid]::NewGuid().ToString('N'))
-foreach ($scenario in @('primera-x','cierre-repetido','cancelar-operacion','contexto-incompatible')) {
+foreach ($scenario in @('primera-x','cierre-repetido','cancelar-operacion','contexto-incompatible','pausar-descarga')) {
     $directory = Join-Path $root $scenario
     $result = Join-Path $directory 'result.json'
     $arguments = @('--data-root',('"'+$directory+'"'),'--smoke-close',('"'+$result+'"'))
     if ($scenario -eq 'cierre-repetido') { $arguments += '--repeat-close' }
     if ($scenario -eq 'cancelar-operacion') { $arguments += '--close-during-operation' }
     if ($scenario -eq 'contexto-incompatible') { $arguments += '--reject-invalid-context' }
+    if ($scenario -eq 'pausar-descarga') { $arguments += '--pause-download' }
     $process = Start-Process -FilePath $Aplicacion -ArgumentList $arguments -WindowStyle Hidden -PassThru
     if (!$process.WaitForExit(45000)) {
         $process.Kill()

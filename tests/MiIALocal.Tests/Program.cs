@@ -18,6 +18,24 @@ if (args.Contains("--update-probe"))
     }
     return 0;
 }
+if (args.Contains("--download-probe"))
+{
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+    await Task.WhenAll(Enumerable.Range(0, 4).Select(async index => {
+        var start = index * 65536L;
+        using var request = new HttpRequestMessage(HttpMethod.Get, ReleaseProfile.Model.Url);
+        request.Headers.Range = new(start, start + 65535);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        if (response.StatusCode != HttpStatusCode.PartialContent || response.Content.Headers.ContentRange?.From != start || response.Content.Headers.ContentRange?.To != start + 65535 || response.Content.Headers.ContentRange?.Length != ReleaseProfile.Model.Bytes)
+            throw new Exception("El servidor no devolvió el fragmento solicitado; no se leerá el cuerpo.");
+        using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        await using var body = await response.Content.ReadAsStreamAsync(ct.Token);
+        await body.ReadExactlyAsync(new byte[65536], ct.Token);
+        Console.WriteLine($"PASS Hugging Face: fragmento {index + 1}, HTTP 206, 64 KiB en {clock.Elapsed.TotalSeconds:0.0}s");
+    }));
+    return 0;
+}
 var failures = 0;
 var root = Path.Combine(Path.GetTempPath(), "MiIALocal-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
@@ -29,6 +47,8 @@ async Task Test(string name, Func<Task> action)
 void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
 async Task Throws<T>(Func<Task> action) where T : Exception { try { await action(); } catch (T) { return; } throw new Exception("Se esperaba " + typeof(T).Name); }
 DownloadAsset Asset(byte[] bytes) => new("test", "Prueba", "https://example.invalid/model", Convert.ToHexStringLower(SHA256.HashData(bytes)), "model.bin", bytes.Length);
+
+await DownloadTests.RunAsync(root, Assert, Test);
 
 await Test("Hardware: admitir solo las dos placas de escritorio", () =>
 {

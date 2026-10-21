@@ -1,8 +1,10 @@
-# Mi IA Local
+![Forja 50](src/MiIALocal.Desktop/Assets/logo.png)
+
+# Forja 50
 
 Aplicación de Windows 11 para trabajar con archivos y Git usando Qwen local. Alcance inicial: RTX 5070 Ti y RTX 5080 de escritorio, ambas de 16 GB, con 32 GB de RAM.
 
-Versión de desarrollo 0.1.5. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
+Versión de desarrollo 0.1.6. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
 
 ## Desarrollo
 
@@ -35,7 +37,7 @@ Para preparar el compilador oficial dentro del proyecto y producir ambos formato
 
 El workflow [Compilar Windows](https://github.com/RecknockT/Mi-IA-Local/actions/workflows/windows.yml) compila y prueba en Windows, y genera Setup, ZIP portable y un manifiesto con SHA-256. Se ejecuta al subir cambios a `main`, en pull requests y desde **Run workflow**. Las descargas aparecen como artifacts en cada ejecución durante 30 días. El runner no necesita una GPU y no descarga el modelo; sus pruebas no sustituyen la validación física.
 
-Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.5-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
+Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.6-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
 
 ## Estado
 
@@ -51,3 +53,10 @@ Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Ve
 ## Licencias
 
 Las condiciones del modelo Swift y sus avisos están en `licenses/model`. No dar por hecho que todo uso comercial está permitido sin condiciones. Los motores y herramientas conservan sus licencias de origen. La licencia pública de este proyecto todavía está pendiente de elección.
+
+## Descargas y pausa
+Forja 50 usa hasta cuatro conexiones para archivos grandes, con bloques de 8 MiB y verificación SHA-256 del archivo completo. Si el servidor no admite fragmentos, usa una sola conexión. Después de 30 segundos sin respuesta o sin recibir datos, reintenta hasta tres veces con espera progresiva.
+
+La interfaz muestra GB, MB/s y tiempo estimado. Pausar conserva los bloques completos guardados; Reanudar preparación continúa desde ese punto, incluso después de cerrar. Los parciales de Mi IA Local son compatibles. Se puede repetir hasta el último lote en memoria (máximo 32 MiB). El indicador de tiempo es aproximado y las conexiones paralelas no garantizan mayor velocidad en todas las redes.
+
+El nombre público es Forja 50, exclusivamente para RTX 5070 Ti y RTX 5080 de escritorio. Se mantienen el identificador de instalación, rutas de datos y nombres de paquetes Mi-IA-Local para conservar las actualizaciones de versiones anteriores.

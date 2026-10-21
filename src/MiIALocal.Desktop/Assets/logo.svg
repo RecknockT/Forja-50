@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Forja 50: código local para RTX 5070 Ti y RTX 5080">
+  <rect width="256" height="256" rx="56" fill="#101820"/>
+  <rect x="46" y="46" width="164" height="164" rx="28" fill="#17363c" stroke="#42e0ba" stroke-width="8"/>
+  <path d="M88 182V74h88v24h-60v20h48v24h-48v40Z" fill="#e5fff8"/>
+  <path d="m166 149 26 18-26 18" fill="none" stroke="#ffb454" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M83 27v19m45-19v19m45-19v19M83 210v19m45-19v19m45-19v19M27 83h19m-19 45h19m-19 45h19m164-90h19m-19 45h19m-19 45h19" stroke="#42e0ba" stroke-width="10" stroke-linecap="round"/>
+</svg>

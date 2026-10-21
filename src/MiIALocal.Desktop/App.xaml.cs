@@ -18,7 +18,7 @@ public partial class App : Application
         var data = new AppPaths(Argument("--data-root") ?? portableRoot);
         var identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(data.Root))).Substring(0, 20);
         instance = new Mutex(true, "Local\\MiIALocal-" + identity, out var first);
-        if (!first) { MessageBox.Show("Mi IA Local ya está abierta. Buscá su ventana en la barra de tareas.", "Mi IA Local"); Shutdown(); return; }
+        if (!first) { MessageBox.Show("Forja 50 ya está abierta. Buscá su ventana en la barra de tareas.", "Forja 50"); Shutdown(); return; }
         DispatcherUnhandledException += (_, error) =>
         {
             File.AppendAllText(Path.Combine(data.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error.Exception + Environment.NewLine);
@@ -29,7 +29,7 @@ public partial class App : Application
                 Dispatcher.BeginInvoke(new Action(() => Shutdown(1)));
                 return;
             }
-            MessageBox.Show("No se pudo completar la acción. Podés revisar el detalle en Diagnóstico.\n\n" + error.Exception.Message, "Mi IA Local");
+            MessageBox.Show("No se pudo completar la acción. Podés revisar el detalle en Diagnóstico.\n\n" + error.Exception.Message, "Forja 50");
         };
         MainWindow = new MainWindow(data); MainWindow.Show();
     }

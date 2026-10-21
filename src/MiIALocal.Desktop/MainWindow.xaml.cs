@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? operation;
     private TaskCompletionSource? operationFinished;
     private string? pendingInstaller;
+    private bool preparing, preparationPaused;
     private bool busy, closing, exiting, browserReady, synchronizingProfile = true;
     public MainWindow(AppPaths paths)
     {
@@ -38,7 +39,8 @@ public partial class MainWindow : Window
             await InspectHardwareAsync();
             if (App.Argument("--smoke-close") is { } closeResult)
             {
-                var duringOperation = App.Arguments.Contains("--close-during-operation");
+                var pauseDownload = App.Arguments.Contains("--pause-download");
+                var duringOperation = App.Arguments.Contains("--close-during-operation") || pauseDownload;
                 var rejectContext = App.Arguments.Contains("--reject-invalid-context");
                 var cancellationObserved = false;
                 if (rejectContext)
@@ -50,13 +52,22 @@ public partial class MainWindow : Window
                 {
                     if (!File.Exists(closeResult)) AppPaths.AtomicWrite(closeResult, System.Text.Json.JsonSerializer.Serialize(new { status = duringOperation && !cancellationObserved || rejectContext && (settings.ContextTokens != 65536 || ContextChoice.SelectedIndex != 1) ? "FAIL" : "PASS", scenario = rejectContext ? "invalid-context-rejected" : duringOperation ? "cancel-operation-and-close" : App.Arguments.Contains("--repeat-close") ? "repeated-close" : "first-close", date = DateTimeOffset.Now }, AppPaths.JsonOptions));
                 };
+                if (pauseDownload) preparing = true;
                 if (duringOperation) _ = RunOperationAsync(async ct =>
                 {
                     try { await Task.Delay(Timeout.Infinite, ct); }
                     catch (OperationCanceledException) { cancellationObserved = true; throw; }
                 });
-                _ = Dispatcher.BeginInvoke(new Action(() =>
+                _ = Dispatcher.BeginInvoke(new Action(async () =>
                 {
+                    if (pauseDownload)
+                    {
+                        var hadPauseButton = Equals(CancelButton.Content, "Pausar");
+                        CancelButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                        await operationFinished!.Task; preparing = false; RefreshControls();
+                        if (!hadPauseButton || !preparationPaused || !Equals(PrepareButton.Content, "Reanudar preparación"))
+                            AppPaths.AtomicWrite(closeResult, "{\"status\":\"FAIL\",\"error\":\"Controles de pausa incorrectos\"}");
+                    }
                     if (App.Arguments.Contains("--repeat-close")) { Close(); Close(); }
                     else SystemCommands.CloseWindow(this);
                 }));
@@ -153,12 +164,14 @@ public partial class MainWindow : Window
         StartButton.Content = runtime.State == RuntimeState.Ready ? "Abrir proyecto" : "Iniciar IA";
         StopButton.IsEnabled = available && runtime.State != RuntimeState.Stopped;
         PrepareButton.IsEnabled = available && compatible && runtime.State != RuntimeState.Ready;
+        PrepareButton.Content = preparationPaused || File.Exists(paths.ModelPath(settings) + ".part") ? "Reanudar preparación" : "Preparar IA";
         ProjectButton.IsEnabled = available;
         ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
         UpdateButton.IsEnabled = available;
         ModelFolderButton.IsEnabled = ImportButton.IsEnabled = ContextChoice.IsEnabled;
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        CancelButton.Content = preparing ? "Pausar" : "Cancelar";
     }
     private void ContextChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -209,7 +222,7 @@ public partial class MainWindow : Window
     {
         if (busy || closing) return; busy = true; operation = new(); operationFinished = new(TaskCreationOptions.RunContinuationsAsynchronously); Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true; RefreshControls();
         try { await action(operation.Token); }
-        catch (OperationCanceledException) { StatusLabel.Text = "Acción cancelada. La descarga parcial se conserva para reanudar."; }
+        catch (OperationCanceledException) { StatusLabel.Text = preparationPaused ? "Preparación pausada. Pulsá Reanudar preparación para continuar." : "Acción cancelada. La descarga parcial se conserva para reanudar."; }
         catch (Exception ex) { LogError(ex); StatusLabel.Text = ex.Message; DetailLabel.Text = "Podés revisar Diagnóstico y reintentar. No se muestra un error de una operación anterior."; }
         finally { operation.Dispose(); operation = null; busy = false; Progress.Visibility = Visibility.Collapsed; RefreshControls(); operationFinished.TrySetResult(); }
     }
@@ -245,8 +258,10 @@ public partial class MainWindow : Window
     }
     private async void Prepare_Click(object sender, RoutedEventArgs e)
     {
+        if (busy || closing) return;
         if (LicenseCheck.IsChecked != true) { StatusLabel.Text = "Revisá las licencias y confirmá que las aceptás antes de preparar la IA."; return; }
-        await RunOperationAsync(async ct =>
+        preparing = true; preparationPaused = false;
+        try { await RunOperationAsync(async ct =>
         {
             hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
             ApplyHardwareProfile();
@@ -254,11 +269,13 @@ public partial class MainWindow : Window
             settings.LicenseAccepted = true; paths.SaveSettings(settings);
             var progress = new Progress<PreparationProgress>(p =>
             {
+                if (ct.IsCancellationRequested || closing) return;
                 StatusLabel.Text = p.Stage; Progress.IsIndeterminate = p.Percentage is null; if (p.Percentage is { } value) Progress.Value = value;
-                DetailLabel.Text = p.Total is long total ? $"{p.Done / 1000000000d:0.00} / {total / 1000000000d:0.00} GB · podés cancelar y reanudar" : "Preparando y verificando archivos. El modelo no viene dentro del instalador.";
+                DetailLabel.Text = p.TransferDetails;
             });
             await provisioner.PrepareAsync(settings, progress, ct); StatusLabel.Text = "IA preparada. Elegí tu proyecto y pulsá Iniciar IA.";
-        });
+        }); }
+        finally { preparing = false; RefreshControls(); }
     }
     private async void Start_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async ct =>
     {
@@ -303,7 +320,11 @@ public partial class MainWindow : Window
         }
     }
     private async void Stop_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async _ => { await runtime.StopAsync(); Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible; });
-    private void Cancel_Click(object sender, RoutedEventArgs e) => operation?.Cancel();
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (preparing) { preparationPaused = true; StatusLabel.Text = "Pausando y guardando el progreso..."; }
+        operation?.Cancel();
+    }
     private void Logs_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, Arguments = '"' + paths.Logs + '"' });
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
@@ -315,11 +336,13 @@ public partial class MainWindow : Window
             var portable = File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.flag"));
             var update = await AppUpdates.CheckAsync(http, ReleaseProfile.Version, portable, timeout.Token);
             if (update is null) { StatusLabel.Text = "Ya tenés la última versión disponible: " + ReleaseProfile.Version; return; }
-            if (MessageBox.Show(this, $"Está disponible {update.Version}. ¿Descargarla?\n\nLa descarga se verifica con SHA-256. Tus modelos, chats y ajustes se conservan.\n" + (portable ? "La edición portable se reemplaza manualmente." : "Al terminar se detendrá la IA y se abrirá el instalador."), "Actualizar Mi IA Local", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            if (MessageBox.Show(this, $"Está disponible {update.Version}. ¿Descargarla?\n\nLa descarga se verifica con SHA-256. Tus modelos, chats y ajustes se conservan.\n" + (portable ? "La edición portable se reemplaza manualmente." : "Al terminar se detendrá la IA y se abrirá el instalador."), "Actualizar Forja 50", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             var destination = Path.Combine(paths.Root, "updates", update.Asset.FileName);
             await new VerifiedDownloader(http).DownloadAsync(update.Asset, destination, new Progress<PreparationProgress>(p =>
             {
+                if (ct.IsCancellationRequested || closing) return;
                 StatusLabel.Text = p.Stage; Progress.IsIndeterminate = p.Percentage is null;
+                DetailLabel.Text = p.TransferDetails;
                 if (p.Percentage is { } value) Progress.Value = value;
             }), ct);
             ct.ThrowIfCancellationRequested();
@@ -352,7 +375,7 @@ public partial class MainWindow : Window
     }
     private async Task FinishClosingAsync()
     {
-        if (App.Argument("--smoke-close") is null && (busy || runtime.State is RuntimeState.Ready or RuntimeState.Loading) && MessageBox.Show(this, "¿Detener la IA y salir? Tus chats y archivos se conservan.", "Mi IA Local", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        if (App.Argument("--smoke-close") is null && (busy || runtime.State is RuntimeState.Ready or RuntimeState.Loading) && MessageBox.Show(this, "¿Detener la IA y salir? Tus chats y archivos se conservan.", "Forja 50", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
         { closing = false; RefreshControls(); return; }
         operation?.Cancel(); healthTimer.Stop();
         try
@@ -378,7 +401,7 @@ public partial class MainWindow : Window
             catch (Exception ex)
             {
                 LogError(ex);
-                MessageBox.Show(this, "La actualización está verificada pero no se pudo abrir el instalador. Podés ejecutarlo manualmente:\n" + installer, "Mi IA Local");
+                MessageBox.Show(this, "La actualización está verificada pero no se pudo abrir el instalador. Podés ejecutarlo manualmente:\n" + installer, "Forja 50");
             }
         }
         http.Dispose(); exiting = true; Close();
