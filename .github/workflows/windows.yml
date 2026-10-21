@@ -91,6 +91,8 @@ jobs:
 
             Descarga continua a maxima velocidad disponible: 16 conexiones, fragmentos persistentes, pausa y reanudacion, reintentos, velocidad reciente y tiempo estimado. Contexto inicial 64K; prefill 896 en 5080 y 512 en 5070 Ti. La compilacion comprueba el cierre inicial, solicitudes repetidas y cancelacion de operaciones al cerrar.
 
+            Administrar almacenamiento permite elegir modelos, componentes, cache, conversaciones y ajustes, con rutas, espacio y confirmacion. El desinstalador ofrece abrir esa misma limpieza; conservar datos es la opcion inicial y la desinstalacion silenciosa los conserva. Los archivos importados, enlaces y repositorios Git quedan protegidos.
+
             La prueba de inferencia del nuevo motor nativo queda pendiente en ambas placas. Las pruebas historicas de la 5080 corresponden a KVMem. Pendientes tambien Windows limpio y uso prolongado. Los paquetes todavia no tienen firma de editor. Revisar las licencias del modelo y los componentes antes de usarlos.
         run: |
           python3 - <<'PY'

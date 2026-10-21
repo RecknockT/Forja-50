@@ -18,7 +18,42 @@ public partial class App : Application
         var data = new AppPaths(Argument("--data-root") ?? portableRoot);
         var identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(data.Root))).Substring(0, 20);
         instance = new Mutex(true, "Local\\MiIALocal-" + identity, out var first);
-        if (!first) { MessageBox.Show("Forja 50 ya está abierta. Buscá su ventana en la barra de tareas.", "Forja 50"); Shutdown(); return; }
+        if (!first) { if (!Arguments.Contains("--uninstall-cleanup")) MessageBox.Show("Forja 50 ya está abierta. Buscá su ventana en la barra de tareas.", "Forja 50"); Shutdown(3); return; }
+        if (Arguments.Contains("--uninstall-cleanup"))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try
+            {
+                var storage = new StorageWindow(data, data.LoadSettings(), true);
+                MainWindow = storage;
+                MainWindow.Closed += (_, _) => Shutdown(0);
+                if (Argument("--storage-smoke-result") is { } result && Argument("--data-root") is not null)
+                    storage.Loaded += async (_, _) =>
+                    {
+                        try
+                        {
+                            await storage.Ready;
+                            if (Argument("--storage-preview") is { } preview)
+                            {
+                                storage.UpdateLayout();
+                                var visual = (FrameworkElement)storage.Content;
+                                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)visual.ActualWidth, (int)visual.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                                var drawing = new System.Windows.Media.DrawingVisual();
+                                using (var dc = drawing.RenderOpen()) dc.DrawRectangle(new System.Windows.Media.VisualBrush(visual), null, new Rect(0, 0, visual.ActualWidth, visual.ActualHeight));
+                                bitmap.Render(drawing);
+                                var png = new System.Windows.Media.Imaging.PngBitmapEncoder(); png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                                using var output = File.Create(preview); png.Save(output);
+                            }
+                            AppPaths.AtomicWrite(result, System.Text.Json.JsonSerializer.Serialize(new { selected = storage.SelectedCount, settingsDeleted = storage.SettingsDeleted }));
+                            storage.Close();
+                        }
+                        catch (Exception error) { AppPaths.AtomicWrite(result, System.Text.Json.JsonSerializer.Serialize(new { error = error.Message })); Shutdown(2); }
+                    };
+                MainWindow.Show();
+            }
+            catch (Exception error) { MessageBox.Show("No se pudo abrir la limpieza. Los datos se conservan.\n\n" + error.Message, "Forja 50"); Shutdown(2); }
+            return;
+        }
         if (Arguments.Contains("--configure-native"))
         {
             var settings = data.LoadSettings();

@@ -6,7 +6,7 @@
   #define SetupOutput "..\artifacts"
 #endif
 #ifndef AppVersionText
-  #define AppVersionText "0.2.0-dev"
+  #define AppVersionText "0.2.1-dev"
 #endif
 [Setup]
 AppId={{9AD610A8-C95C-460B-B5BD-2F45CC736DC0}
@@ -44,4 +44,34 @@ Name: "{group}\Forja 50"; Filename: "{app}\Mi IA Local.exe"
 Name: "{autodesktop}\Forja 50"; Filename: "{app}\Mi IA Local.exe"; Tasks: desktopicon
 [Run]
 Filename: "{app}\Mi IA Local.exe"; Description: "Abrir Forja 50"; Flags: nowait postinstall skipifsilent
-; Los datos de LocalAppData\MiIALocal se conservan al desinstalar.
+; La limpieza siempre es optativa. La desinstalación silenciosa conserva los datos.
+[Code]
+var
+  CleanupRequested: Boolean;
+
+function InitializeUninstall: Boolean;
+begin
+  Result := True;
+  CleanupRequested := False;
+  if not UninstallSilent and DirExists(ExpandConstant('{localappdata}\MiIALocal')) then
+    CleanupRequested := MsgBox(
+      '¿Querés eliminar también los datos descargados por Forja?' + #13#10#13#10 +
+      'Se abrirá Administrar almacenamiento para elegir modelos, motores, caché, conversaciones y ajustes.' + #13#10 +
+      'Los archivos importados y los repositorios están protegidos. Podés cerrar esa ventana para conservar los datos.' + #13#10#13#10 +
+      'Si elegís No, se conservarán todos los datos de Forja.',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+  Executed: Boolean;
+begin
+  if (CurUninstallStep = usUninstall) and CleanupRequested then
+  begin
+    Executed := Exec(ExpandConstant('{app}\Mi IA Local.exe'), '--uninstall-cleanup',
+      ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
+    if (not Executed) or (ResultCode <> 0) then
+      MsgBox('No se pudo completar la limpieza. Si Forja sigue abierta, cerrala y usá Administrar almacenamiento antes de desinstalar. Los datos restantes se conservan.', mbInformation, MB_OK);
+  end;
+end;

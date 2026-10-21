@@ -9,7 +9,7 @@ public enum EngineMode { KvMem, NInfer5080 }
 
 public static class ReleaseProfile
 {
-    public const string Version = "0.2.0-dev";
+    public const string Version = "0.2.1-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;

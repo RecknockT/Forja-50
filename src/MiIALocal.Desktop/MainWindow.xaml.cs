@@ -35,6 +35,21 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             await InspectHardwareAsync();
+            if (App.Argument("--smoke-browser-cleanup") is { } browserReport && App.Argument("--data-root") is not null)
+            {
+                try
+                {
+                    var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(paths.Root, "browser"));
+                    await Chat.EnsureCoreWebView2Async(environment); browserReady = true;
+                    await ReleaseBrowserForCleanupAsync();
+                    new StorageCleanup(paths, settings).Delete([StorageCategory.Conversations]);
+                    if (Directory.Exists(Path.Combine(paths.Root, "browser"))) throw new IOException("El caché del navegador sigue presente.");
+                    AppPaths.AtomicWrite(browserReport, "{\"status\":\"PASS\",\"browserClosed\":true,\"cacheDeleted\":true,\"modelStarted\":false}");
+                    Close();
+                }
+                catch (Exception error) { AppPaths.AtomicWrite(browserReport, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.Message })); Close(); }
+                return;
+            }
             if (App.Argument("--smoke-close") is { } closeResult)
             {
                 var pauseDownload = App.Arguments.Contains("--pause-download");
@@ -170,6 +185,7 @@ public partial class MainWindow : Window
         ProjectButton.IsEnabled = available;
         ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
+        StorageButton.IsEnabled = ContextChoice.IsEnabled;
         NinferEngineButton.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         ResetNinferEngineButton.IsEnabled = NinferEngineButton.IsEnabled;
         NinferVisionCheck.IsEnabled = ContextChoice.IsEnabled;
@@ -358,6 +374,24 @@ public partial class MainWindow : Window
         catch (Exception ex) { LogError(ex); StatusLabel.Text = ex.Message; DetailLabel.Text = "Podés revisar Diagnóstico y reintentar. No se muestra un error de una operación anterior."; }
         finally { operation.Dispose(); operation = null; busy = false; Progress.Visibility = Visibility.Collapsed; RefreshControls(); operationFinished.TrySetResult(); }
     }
+    private void Storage_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        var window = new StorageWindow(paths, settings, releaseBrowser: ReleaseBrowserForCleanupAsync) { Owner = this };
+        window.ShowDialog();
+        if (window.RequiresRestart) { Close(); return; }
+        ApplyModeToUi(); RefreshControls();
+    }
+    private async Task ReleaseBrowserForCleanupAsync()
+    {
+        if (!browserReady || Chat.CoreWebView2 is null) return;
+        var environment = Chat.CoreWebView2.Environment;
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnExited(object? sender, CoreWebView2BrowserProcessExitedEventArgs args) => exited.TrySetResult();
+        environment.BrowserProcessExited += OnExited;
+        try { Chat.Dispose(); browserReady = false; await exited.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
+        finally { environment.BrowserProcessExited -= OnExited; }
+    }
     private void UpdateProject()
     {
         ProjectName.Text = string.IsNullOrWhiteSpace(settings.LastProject) ? "Elegí dónde trabajar" : Path.GetFileName(settings.LastProject.TrimEnd(Path.DirectorySeparatorChar));
@@ -502,7 +536,11 @@ public partial class MainWindow : Window
     private void Versions_Click(object sender, RoutedEventArgs e) => OpenExternal(AppUpdates.ReleasesUrl);
     private void Licenses_Click(object sender, RoutedEventArgs e) => OpenExternal(settings.EngineMode == EngineMode.NInfer5080 ? "https://huggingface.co/ninfer-5080/Qwen3.8-27B-RTX5080" : "https://huggingface.co/fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer/tree/7da3e38b9ee7a6c8888cf2112d3c5a48a952a2a8");
     private static void OpenExternal(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-    private void LogError(Exception error) => File.AppendAllText(Path.Combine(paths.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error + Environment.NewLine);
+    private void LogError(Exception error)
+    {
+        Directory.CreateDirectory(paths.Logs);
+        File.AppendAllText(Path.Combine(paths.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error + Environment.NewLine);
+    }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (exiting) return; e.Cancel = true;

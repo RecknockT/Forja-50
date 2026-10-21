@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.2.0.
+21 de octubre de 2026 · desarrollo 0.2.1.
+
+## Limpieza y desinstalación
+
+- Administrar almacenamiento: cinco categorías con espacio y rutas, selección inicial vacía, selección de todo lo permitido y confirmación con No como respuesta inicial. La IA debe estar detenida.
+- El desinstalador interactivo ofrece abrir esa misma selección antes de quitar el programa. Conservar es la opción inicial; la desinstalación silenciosa conserva los datos.
+- El borrado se limita a modelos conocidos, componentes, descargas/parciales, actualizaciones, datos del agente/navegador, ajustes y registros. Se protegen importaciones, proyectos, repositorios Git y enlaces. Se vuelve a validar el plan antes de borrar, sin seguir enlaces durante el recorrido.
+- 53 pruebas de núcleo y 8 comprobaciones de ventana/configuración aprobadas. Las nuevas cubren selección por categoría, cancelación, instancia ocupada, repositorios anidados, worktrees, proyecto sin Git, importaciones, junction agregada tras inspección y preservación de archivos ajenos.
+- Prueba local adicional aprobada: iniciar un navegador integrado vacío, cerrarlo, esperar la salida de sus procesos y borrar su caché. Sin carga de modelo ni inferencia. Setup 0.2.1 compilado; no se instaló sobre la instalación manual del usuario.
 
 ## Integración nativa y descargas
 

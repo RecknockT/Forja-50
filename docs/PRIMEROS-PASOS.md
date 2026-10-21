@@ -27,6 +27,14 @@ Si la descarga actual está trabada, pulsá Cancelar o Pausar y esperá a que se
 
 La instalada usa `%LOCALAPPDATA%\MiIALocal`. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
 
+## Administrar almacenamiento y desinstalar
+
+Con la IA detenida, abrí **Administrar almacenamiento**. Verás el espacio y las rutas de modelos, componentes, caché/descargas incompletas, conversaciones y ajustes. Podés marcar categorías o usar **Seleccionar todo**; **Eliminar seleccionados** pide una confirmación con No como respuesta inicial. La eliminación es permanente. Borrar componentes permite descargarlos de nuevo; borrar parciales pierde ese progreso. Al borrar conversaciones o ajustes, Forja se cierra: volvé a abrirla para continuar.
+
+Los archivos importados y sus carpetas se conservan. Se bloquea la limpieza de carpetas enlazadas, repositorios Git y la carpeta de proyecto seleccionada; también se conservan archivos desconocidos fuera de las carpetas administradas. Un modelo descargado en una ubicación personalizada aparece por su ruta exacta, sin borrar el resto de esa carpeta.
+
+Al desinstalar con Setup, elegí si querés abrir esta misma limpieza antes de quitar el programa. **No** conserva los datos. **Sí** abre la selección y su confirmación; cerrar esa ventana conserva los datos restantes. La desinstalación silenciosa y las actualizaciones conservan los datos. La limpieza solo se abre si Forja no está ejecutándose.
+
 **Diagnóstico y registros** abre los mensajes de la aplicación. Si falta WebView2 Runtime, instalalo desde la [página oficial de Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/). Su preparación automática sigue pendiente.
 
 El análisis de fuentes y la diferencia entre Windows nativo y WSL2 están en [NInfer en Windows](NINFER-WINDOWS.md).

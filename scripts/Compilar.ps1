@@ -17,6 +17,7 @@ if ($LASTEXITCODE -ne 0) { throw 'La compilación falló.' }
 if ($LASTEXITCODE -ne 0) { throw 'Las pruebas fallaron.' }
 & (Join-Path $PSScriptRoot 'Verificar-Cierre.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Configuracion.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Almacenamiento.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 if (!$Publicar) { return }
 $output = Join-Path $projectRoot ('artifacts\paquete-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $appDirectory = Join-Path $output 'app'

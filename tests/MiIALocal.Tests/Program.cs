@@ -99,6 +99,7 @@ async Task Throws<T>(Func<Task> action) where T : Exception { try { await action
 DownloadAsset Asset(byte[] bytes) => new("test", "Prueba", "https://example.invalid/model", Convert.ToHexStringLower(SHA256.HashData(bytes)), "model.bin", bytes.Length);
 
 await DownloadTests.RunAsync(root, Assert, Test);
+await StorageCleanupTests.RunAsync(root, Assert, Test);
 
 await Test("Hardware: admitir solo las dos placas de escritorio", () =>
 {
