@@ -4,6 +4,12 @@ using System.Security.Cryptography;
 using System.Text;
 using MiIALocal.Core;
 
+if (args.Contains("--early-exit-fixture"))
+{
+    Console.OutputEncoding = Encoding.UTF8;
+    Console.WriteLine("Revisión correcta");
+    return 0;
+}
 if (args.Contains("--integration")) return await Integration.RunAsync(args);
 if (args.Contains("--context-probe")) return await ContextProbe.RunAsync(args);
 
@@ -306,8 +312,10 @@ if (OperatingSystem.IsWindows())
 {
     await Test("Proceso: salida rápida 0 y Unicode sin falso error", async () =>
     {
-        var shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-        await using (var process = OwnedProcess.Start(shell, ["-NoProfile", "-Command", "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output 'Revisión correcta'; exit 0"], root, Path.Combine(root, "early")))
+        var executable = Environment.ProcessPath!;
+        string[] arguments = Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+            ? [typeof(Program).Assembly.Location, "--early-exit-fixture"] : ["--early-exit-fixture"];
+        await using (var process = OwnedProcess.Start(executable, arguments, root, Path.Combine(root, "early")))
         { var deadline = DateTime.UtcNow.AddSeconds(15); while (!process.HasExited && DateTime.UtcNow < deadline) await Task.Delay(100); Assert(process.HasExited, "El proceso de prueba no terminó."); }
         Assert((await File.ReadAllTextAsync(Path.Combine(root, "early.out.log"))).Contains("Revisión correcta"), "Se dañaron los caracteres.");
     });
