@@ -1,0 +1,47 @@
+{
+  "SourceRepository": "https://github.com/YukinoKaorisuna/ninfer-5070ti.git",
+  "SourceCommit": "aee91065f4d3635a07d681800f87829e18f0e227",
+  "ParentProject": "https://github.com/toddballinger/ninfer-5080",
+  "VcpkgCommit": "857036234d15fbed8f30fed66e898d7725446c0c",
+  "CudaVersion": "13.4.1",
+  "Architecture": "120a",
+  "GpuInferenceTested": false,
+  "CudaArchives": [
+    {
+      "Id": "cccl",
+      "Url": "https://developer.download.nvidia.com/compute/cuda/redist/cccl/windows-x86_64/cccl-windows-x86_64-13.3.4.2.1-archive.zip",
+      "Sha256": "ea3ebdd98d4d98819cc26b66bc5a0931004ed35ff18eea8b93e0bd2c8bfa5d7c",
+      "Bytes": 4022245
+    },
+    {
+      "Id": "cuda_crt",
+      "Url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_crt/windows-x86_64/cuda_crt-windows-x86_64-13.4.59-archive.zip",
+      "Sha256": "f969a0e3b086a48f940563cd1b965cb5197fd9540c79cc952b1abfa479f9ede7",
+      "Bytes": 166601
+    },
+    {
+      "Id": "cuda_cudart",
+      "Url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-13.4.49-archive.zip",
+      "Sha256": "e6663f3d3e8949eedc2d5ab92c7c5b9fa3f2a222086d91c42bfc5a38bf2b0225",
+      "Bytes": 2736140
+    },
+    {
+      "Id": "cuda_nvcc",
+      "Url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-13.4.59-archive.zip",
+      "Sha256": "06a4fe6ec543030c5e5a7b85493cda90612015d9fff2a54ed0227162c937ea46",
+      "Bytes": 32989100
+    },
+    {
+      "Id": "libnvvm",
+      "Url": "https://developer.download.nvidia.com/compute/cuda/redist/libnvvm/windows-x86_64/libnvvm-windows-x86_64-13.4.59-archive.zip",
+      "Sha256": "a7a07bcc21cc05bce83eedebcbcd9b9f5418c58316b0fa28a57cb2c548b29841",
+      "Bytes": 60031482
+    },
+    {
+      "Id": "cuda_nvtx",
+      "Url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvtx/windows-x86_64/cuda_nvtx-windows-x86_64-13.4.49-archive.zip",
+      "Sha256": "01a6f60403d79459f0b1ba00e3038e1ebdeaa0c8144751b9eb6245ab36c994c1",
+      "Bytes": 153681
+    }
+  ]
+}

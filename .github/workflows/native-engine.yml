@@ -1,0 +1,27 @@
+name: Compilar motor nativo NInfer
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: native-engine
+  cancel-in-progress: false
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compilar fuente fijada y comprobar ayuda sin GPU
+        shell: pwsh
+        run: ./scripts/Compilar-Motor-Nativo.ps1 -WorkRoot "$env:RUNNER_TEMP/ninfer-native" -Jobs 2
+      - name: Publicar motor experimental y procedencia
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $root = "$env:RUNNER_TEMP/ninfer-native"
+          $metadata = Get-Content "$root/runtime.json" -Raw | ConvertFrom-Json
+          $tag = 'ninfer-native-' + $metadata.SourceCommit.Substring(0,7)
+          gh release create $tag "$root/$($metadata.File)" "$root/runtime.json" --target $env:GITHUB_SHA --prerelease --title 'NInfer nativo para Forja 50 · experimental' --notes 'Port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger. Fuente y herramientas fijadas en source.json. Compilación y ayuda comprobadas; inferencia en GPU pendiente. Sin modelos incluidos.'
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar el motor.' }
