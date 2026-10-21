@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import types
+sys.dont_write_bytecode = True
 
 source = Path(__file__).resolve().parents[1] / "src/MiIALocal.Core/VisualAssets/forja_guard.py"
 

@@ -9,3 +9,5 @@ artifacts/
 *.suo
 *.ninfer
 *.part
+__pycache__/
+*.pyc
