@@ -1,6 +1,12 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.2.3.
+21 de octubre de 2026 · desarrollo 0.2.4.
+
+## Carpetas con el nombre público
+
+- Nuevas instalaciones: programa en `%LOCALAPPDATA%\Programs\Forja 50`; datos y modelos en `%LOCALAPPDATA%\Forja 50` y su subcarpeta `models`.
+- Actualizaciones: mismo AppId y ejecutable; Inno reutiliza la carpeta anterior. Si existe `%LOCALAPPDATA%\MiIALocal`, la aplicación sigue usando esos datos sin moverlos, duplicarlos ni invalidar rutas guardadas. Portable y `--data-root` conservan su ubicación explícita.
+- El desinstalador detecta ambas carpetas de datos antes de ofrecer la limpieza. No se renombran carpetas de la instalación del usuario desde herramientas de desarrollo.
 
 ## Cuenta GitHub, paquetes y cierre
 
@@ -9,7 +15,7 @@
 - Repositorio canónico `RecknockT/Forja-50`; Setup y portable pasan a llamarse `Forja-50-VERSION-Setup.exe` y `Forja-50-VERSION-Portable-win-x64.zip`. El nuevo actualizador acepta nombres y URLs anteriores conocidos, manteniendo validación de origen/tamaño/hash. Las versiones hasta 0.2.2 pueden necesitar una actualización manual por su validación estricta del nombre anterior del repositorio.
 - Corregido el cierre al limpiar conversaciones/ajustes: libera el navegador, espera su salida, reemplaza el control descartado y reinicia la vista sin cerrar Forja. Al eliminar ajustes restaura valores iniciales; los proyectos permanecen en su carpeta.
 - Cerrar Forja siempre pide confirmación con No inicial. Rechazar conserva operaciones; confirmar pausa/cancela preparación y detiene procesos propios antes de salir. Un rechazo también descarta una actualización pendiente, evitando abrir su instalador en un cierre posterior.
-- 58 comprobaciones del núcleo y 13 de ventanas/configuración aprobadas, sin advertencias ni errores de compilación: sesión, migración de paquetes, limpieza completa, reinicio de vista y cierre aceptado/rechazado. Prueba adicional local con GCM y Git reales: credencial ficticia cifrada con DPAPI en una ruta con espacios, Unicode y caracteres especiales; helper HTTPS y cierre de sesión aprobados sin OAuth ni acceso a repositorios. Prueba con WebView2 vacío: borrar todo y volver a crear el navegador sin cerrar la aplicación aprobada. No se descargaron pesos ni se inició inferencia.
+- 60 comprobaciones del núcleo y 13 de ventanas/configuración aprobadas, sin advertencias ni errores de compilación: sesión, migración de paquetes, limpieza completa, reinicio de vista y cierre aceptado/rechazado. Prueba adicional local con GCM y Git reales: credencial ficticia cifrada con DPAPI en una ruta con espacios, Unicode y caracteres especiales; helper HTTPS y cierre de sesión aprobados sin OAuth ni acceso a repositorios. Prueba con WebView2 vacío: borrar todo y volver a crear el navegador sin cerrar la aplicación aprobada. No se descargaron pesos ni se inició inferencia.
 - Autorización OAuth real: pendiente de que el usuario complete el navegador. No se tomó control de su sesión de GitHub ni se instaló Forja durante estas pruebas.
 
 ## RTX 3090 y Setup unificado

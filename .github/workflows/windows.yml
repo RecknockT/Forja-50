@@ -95,6 +95,8 @@ jobs:
 
             Setup agrupa carpeta de instalacion, acceso directo al escritorio (marcado por defecto) y abrir al terminar en una sola pantalla. El modelo se descarga despues desde Forja.
 
+            Desde 0.2.4, las instalaciones nuevas usan Programs/Forja 50 para el programa y LocalAppData/Forja 50 para datos y modelos. Las actualizaciones conservan las carpetas existentes sin duplicar descargas; portable conserva app/datos. El desinstalador reconoce ambas carpetas de datos.
+
             Cuenta de GitHub: autorizacion en el navegador mediante Git Credential Manager oficial, sesion cifrada con Windows DPAPI en un almacen propio y cierre de sesion independiente. Opcional: no descarga modelos ni requiere iniciar la IA. El agente usa esa sesion para HTTPS sin modificar la configuracion global de Git.
 
             Paquetes Forja-50: Setup y Portable-win-x64. El nuevo actualizador reconoce tambien los nombres anteriores. Debido al cambio de URL del repositorio, las versiones hasta 0.2.2 pueden necesitar actualizar manualmente una vez.

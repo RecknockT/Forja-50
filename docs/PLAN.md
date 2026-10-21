@@ -157,8 +157,8 @@ El nombre final del instalador y la herramienta de empaquetado se fijan en la fa
 
 ### Almacenamiento
 
-- Programa: `%LOCALAPPDATA%\Programs\MiIALocal\`.
-- Configuración e historial: `%LOCALAPPDATA%\MiIALocal\`.
+- Programa: `%LOCALAPPDATA%\Programs\Forja 50\` en instalaciones nuevas; actualizaciones conservan la ubicación anterior.
+- Configuración e historial: `%LOCALAPPDATA%\Forja 50\` en instalaciones nuevas; si existe `%LOCALAPPDATA%\MiIALocal\`, se reutiliza para conservar datos y rutas anteriores.
 - Modelos: ubicación elegida; predeterminado bajo los datos de la aplicación.
 - Temporales y descargas parciales: subcarpeta dedicada y recuperable.
 - Proyectos: sus carpetas originales; no se copian dentro de la aplicación.

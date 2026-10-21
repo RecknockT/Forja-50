@@ -187,6 +187,28 @@ await Test("Descarga: 416 permite reiniciar un parcial incompatible", async () =
     await new VerifiedDownloader(client).DownloadAsync(Asset(bytes) with { Bytes = null }, destination, null, default);
     Assert(requests == 2 && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "El error 416 deja la descarga bloqueada.");
 });
+await Test("Datos: instalación nueva usa Forja 50 sin tocar carpetas anteriores", () =>
+{
+    var local = Path.Combine(root, "brand-new"); Directory.CreateDirectory(local);
+    var selected = AppPaths.DefaultDataRoot(local);
+    Assert(selected == Path.Combine(local, "Forja 50"), "Nombre de datos anterior en instalación nueva.");
+    var paths = new AppPaths(selected);
+    Assert(paths.ModelDirectoryPath(new()) == Path.Combine(selected, "models"), "Modelo fuera de la nueva carpeta.");
+    return Task.CompletedTask;
+});
+await Test("Datos: actualización conserva descargas y ajustes anteriores sin duplicarlos", () =>
+{
+    var local = Path.Combine(root, "brand-upgrade");
+    var legacy = new AppPaths(Path.Combine(local, "MiIALocal"));
+    legacy.SaveSettings(new() { ModelDirectory = "models" });
+    Directory.CreateDirectory(legacy.ModelDirectoryPath(new()));
+    File.WriteAllText(Path.Combine(legacy.ModelDirectoryPath(new()), "descarga.part"), "parcial conservado");
+    Directory.CreateDirectory(Path.Combine(local, "Forja 50"));
+    var selected = new AppPaths(AppPaths.DefaultDataRoot(local));
+    Assert(selected.Root == legacy.Root && File.Exists(selected.SettingsFile), "La actualización perdió los ajustes anteriores.");
+    Assert(File.ReadAllText(Path.Combine(selected.ModelDirectoryPath(new()), "descarga.part")) == "parcial conservado", "Se perdió la descarga parcial.");
+    return Task.CompletedTask;
+});
 await Test("Portable: modelo predeterminado sigue a la carpeta de datos", () =>
 {
     var before = new AppPaths(Path.Combine(root, "portable-original", "datos")); before.SaveSettings(new());

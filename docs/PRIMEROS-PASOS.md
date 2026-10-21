@@ -39,7 +39,7 @@ Si la descarga actual está trabada, pulsá Cancelar o Pausar y esperá a que se
 
 ## Datos y diagnóstico
 
-La instalada usa `%LOCALAPPDATA%\MiIALocal`. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
+Desde 0.2.4 las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para los datos (modelos en `models`). Al actualizar se conserva la ubicación del programa y se reutilizan los datos anteriores en `%LOCALAPPDATA%\MiIALocal` si existen; no se mueven ni se vuelven a descargar. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
 
 ## Administrar almacenamiento y desinstalar
 
@@ -47,7 +47,7 @@ Con la IA detenida, abrí **Administrar almacenamiento**. Verás el espacio y la
 
 ## Cambio de nombre de los paquetes
 
-Desde 0.2.3 los paquetes se llaman `Forja-50-VERSION-Setup.exe` y `Forja-50-VERSION-Portable-win-x64.zip`, en el repositorio `RecknockT/Forja-50`. La aplicación conserva sus identificadores, carpeta de datos y AppId para mantener instalaciones anteriores. El nuevo actualizador reconoce ambos nombres de paquetes y los dos nombres conocidos del repositorio.
+Desde 0.2.3 los paquetes se llaman `Forja-50-VERSION-Setup.exe` y `Forja-50-VERSION-Portable-win-x64.zip`, en el repositorio `RecknockT/Forja-50`. La aplicación conserva sus identificadores y AppId, y detecta la carpeta de datos anterior para mantener instalaciones existentes. El nuevo actualizador reconoce ambos nombres de paquetes y los dos nombres conocidos del repositorio.
 
 Las versiones hasta 0.2.2 validaban de forma estricta la URL antigua; tras renombrar el repositorio pueden no detectar esta actualización. En ese caso instalá manualmente 0.2.3 una vez desde la publicación oficial. No hace falta borrar tus datos para actualizar.
 

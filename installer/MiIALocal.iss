@@ -6,14 +6,15 @@
   #define SetupOutput "..\artifacts"
 #endif
 #ifndef AppVersionText
-  #define AppVersionText "0.2.3-dev"
+  #define AppVersionText "0.2.4-dev"
 #endif
 [Setup]
 AppId={{9AD610A8-C95C-460B-B5BD-2F45CC736DC0}
 AppName=Forja 50
 AppVersion={#AppVersionText}
 AppPublisher=Forja 50
-DefaultDirName={localappdata}\Programs\Mi IA Local
+DefaultDirName={localappdata}\Programs\Forja 50
+UsePreviousAppDir=yes
 DefaultGroupName=Forja 50
 UsePreviousGroup=no
 UsePreviousTasks=no
@@ -126,7 +127,8 @@ function InitializeUninstall: Boolean;
 begin
   Result := True;
   CleanupRequested := False;
-  if not UninstallSilent and DirExists(ExpandConstant('{localappdata}\MiIALocal')) then
+  if not UninstallSilent and (DirExists(ExpandConstant('{localappdata}\Forja 50')) or
+    DirExists(ExpandConstant('{localappdata}\MiIALocal'))) then
     CleanupRequested := MsgBox(
       '¿Querés eliminar también los datos descargados por Forja?' + #13#10#13#10 +
       'Se abrirá Administrar almacenamiento para elegir modelos, motores, caché, conversaciones y ajustes.' + #13#10 +

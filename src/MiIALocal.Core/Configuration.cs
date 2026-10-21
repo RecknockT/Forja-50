@@ -9,7 +9,7 @@ public enum EngineMode { KvMem, NInfer5080 }
 
 public static class ReleaseProfile
 {
-    public const string Version = "0.2.3-dev";
+    public const string Version = "0.2.4-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;
@@ -84,8 +84,14 @@ public sealed class AppPaths
     public string NodeExe => Path.Combine(Runtime, "node", "node-v24.19.0-win-x64", "node.exe");
     public AppPaths(string? root = null)
     {
-        Root = Path.GetFullPath(root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MiIALocal"));
+        Root = Path.GetFullPath(root ?? DefaultDataRoot(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)));
         foreach (var dir in new[] { Root, Runtime, Downloads, Logs }) Directory.CreateDirectory(dir);
+    }
+    public static string DefaultDataRoot(string localApplicationData)
+    {
+        // Keep existing downloads, credentials and absolute paths intact on upgrade.
+        var legacy = Path.Combine(localApplicationData, "MiIALocal");
+        return Directory.Exists(legacy) ? legacy : Path.Combine(localApplicationData, "Forja 50");
     }
     public AppSettings LoadSettings()
     {

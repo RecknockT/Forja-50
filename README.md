@@ -4,7 +4,7 @@
 
 Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. RTX 5070 Ti y RTX 5080 de escritorio (16 GB), o RTX 3090 (24 GB), con 32 GB de RAM.
 
-La versión 0.2.3 de desarrollo incorpora un apartado de GitHub con autorización en el navegador y sesión cifrada independiente, paquetes renombrados a Forja-50, limpieza sin cerrar la aplicación y confirmación al salir. Conserva el perfil RTX 3090 con KVMem sm86 y los perfiles RTX 50 con el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger. El instalador y el portable no contienen pesos ni compiladores: el programa descarga motor, herramientas y modelo después de instalar.
+La versión 0.2.4 de desarrollo incorpora un apartado de GitHub con autorización en el navegador y sesión cifrada independiente, paquetes renombrados a Forja-50, limpieza sin cerrar la aplicación y confirmación al salir. Conserva el perfil RTX 3090 con KVMem sm86 y los perfiles RTX 50 con el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger. El instalador y el portable no contienen pesos ni compiladores: el programa descarga motor, herramientas y modelo después de instalar.
 
 **Administrar almacenamiento** permite eliminar modelos, componentes, caché, conversaciones y ajustes, mostrando rutas y espacio y pidiendo confirmación. El desinstalador ofrece la misma limpieza opcional; conservar datos es la opción inicial. Los archivos importados, los proyectos y los repositorios Git quedan protegidos. Ver [limpieza y desinstalación](docs/PRIMEROS-PASOS.md#administrar-almacenamiento-y-desinstalar).
 
@@ -38,7 +38,7 @@ Pausar conserva el prefijo y los fragmentos completos, incompletos o fuera de or
 
 Seguí [Primeros pasos](docs/PRIMEROS-PASOS.md). El programa detecta la placa, permite elegir la carpeta del modelo y trabajar con un repositorio Git existente. El chat usa OpenCode y se comunica con el motor solo por loopback con claves efímeras.
 
-La instalación guarda datos en `%LOCALAPPDATA%\MiIALocal`; el portable usa `app\datos` junto al ejecutable. `--data-root` permite datos aislados. Se mantienen los nombres internos Mi-IA-Local, el AppId y los nombres de paquetes para actualizar instalaciones anteriores.
+Las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para datos y modelos. Las actualizaciones conservan la carpeta de instalación anterior y reutilizan `%LOCALAPPDATA%\MiIALocal` si existe, sin mover ni duplicar descargas. El portable usa `app\datos` junto al ejecutable; `--data-root` permite datos aislados. Se conservan el AppId y el nombre interno del ejecutable para actualizar instalaciones anteriores.
 
 ## Desarrollar y generar paquetes
 
