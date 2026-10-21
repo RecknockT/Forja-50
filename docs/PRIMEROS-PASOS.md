@@ -16,3 +16,8 @@ Si falta Microsoft Edge WebView2 Runtime, esta versión indica el problema. Inst
 El panel izquierdo muestra la configuración actual. Con la IA detenida, **Configuración avanzada** permite cambiar memoria de historial, caché RAM, salida, razonamiento, MTP, Ngram, formato KV y muestreo. **Restaurar recomendada** carga los valores de referencia de 64K; solo se guardan al pulsar **Guardar**. Más contexto lógico no equivale a conservar todos esos tokens simultáneamente en GPU. Los límites numéricos válidos tampoco garantizan que una combinación entre en VRAM.
 
 Podés abrir los registros con **Diagnóstico y registros**. Conservá los mensajes del error para poder revisarlo. Desinstalar la versión instalada conserva sus datos. Para mover la portable, cerrá la IA primero y conservá también su carpeta `datos`; un modelo importado desde otra ubicación seguirá dependiendo de esa ruta externa.
+
+## Actualizaciones
+Usá Buscar actualizaciones en el panel izquierdo. El programa consulta Releases de GitHub y verifica tamaño y SHA-256 antes de usar el paquete. Las versiones de desarrollo siguen también las publicaciones preliminares. La instalación conserva modelos, chats y ajustes. El modelo y los motores solo cambian al preparar los componentes de una nueva versión; no se actualizan durante un chat.
+
+En Setup, al aceptar la actualización se descarga, se detiene la IA, se cierra la aplicación y se abre el instalador en la ubicación actual. En portable se descarga el ZIP: cerrá el programa, extraé en una carpeta nueva y copiá la carpeta datos anterior. Conservá el original hasta comprobar el funcionamiento. El botón Versiones en GitHub permite consultar notas o descargar manualmente si GitHub no responde o requiere iniciar sesión.

@@ -7,6 +7,17 @@ using MiIALocal.Core;
 if (args.Contains("--integration")) return await Integration.RunAsync(args);
 if (args.Contains("--context-probe")) return await ContextProbe.RunAsync(args);
 
+if (args.Contains("--update-probe"))
+{
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    foreach (var portable in new[] { false, true })
+    {
+        var update = await AppUpdates.CheckAsync(client, "0.1.3-dev", portable, default);
+        if (update is null) throw new Exception("La publicación pública no se detectó.");
+        Console.WriteLine($"PASS GitHub público: {update.Version} / {update.Asset.FileName} / SHA-256 disponible");
+    }
+    return 0;
+}
 var failures = 0;
 var root = Path.Combine(Path.GetTempPath(), "MiIALocal-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
@@ -200,6 +211,32 @@ await Test("Avanzada: parámetros reales, límite del agente y números con punt
     }
     finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
     return Task.CompletedTask;
+});
+await Test("Actualizador: versiones, canales, paquetes y origen", () =>
+{
+    string Release(string version, bool preview = true, bool draft = false, string? url = null, string? digest = null) => System.Text.Json.JsonSerializer.Serialize(new {
+        tag_name = "v" + version, prerelease = preview, draft,
+        assets = new[] { new { name = $"Mi-IA-Local-{version}-Setup.exe", size = 1024, digest = digest ?? "sha256:" + new string('a', 64), browser_download_url = url ?? $"{AppUpdates.ReleasesUrl}/download/v{version}/Mi-IA-Local-{version}-Setup.exe" },
+                         new { name = $"Mi-IA-Local-{version}-win-x64.zip", size = 2048, digest = "sha256:" + new string('b', 64), browser_download_url = $"{AppUpdates.ReleasesUrl}/download/v{version}/Mi-IA-Local-{version}-win-x64.zip" } }
+    });
+    var releases = "[" + string.Join(',', Release("0.1.9-dev"), Release("0.1.10-dev"), Release("0.1.11-dev", draft: true)) + "]";
+    Assert(AppUpdates.Select(releases, "0.1.5-dev", false)?.Version == "0.1.10-dev", "Orden numérico incorrecto o se publicó un borrador.");
+    Assert(AppUpdates.Select(releases, "0.1.5-dev", true)?.Asset.FileName.EndsWith("win-x64.zip") == true, "Portable eligió Setup.");
+    Assert(AppUpdates.Select(releases, "0.1.5", false) is null, "Estable siguió versiones preliminares.");
+    Assert(AppUpdates.Select(releases, "0.1.10-dev", false) is null, "Se ofreció la misma versión o un downgrade.");
+    Assert(AppUpdates.Select("[" + Release("0.1.10", false) + "]", "0.1.10-dev", false)?.Version == "0.1.10", "No se promovió dev a estable.");
+    Assert(AppUpdates.Select("[" + Release("0.1.10-dev", url: "https://example.invalid/evil.exe") + "]", "0.1.5-dev", false) is null, "Se aceptó un ejecutable externo.");
+    Assert(AppUpdates.Select("[" + Release("0.1.10-dev", digest: "sha256:bad") + "]", "0.1.5-dev", false) is null, "Se aceptó un paquete sin hash válido.");
+    return Task.CompletedTask;
+});
+await Test("Actualizador: consulta GitHub sin credenciales y maneja acceso privado", async () =>
+{
+    using var client = new HttpClient(new Handler(request => {
+        Assert(request.Headers.Authorization is null, "Se enviaron credenciales.");
+        Assert(request.Headers.UserAgent.Count > 0 && request.RequestUri?.AbsoluteUri == AppUpdates.ApiUrl, "Consulta incorrecta.");
+        return new(HttpStatusCode.NotFound);
+    }));
+    await Throws<InvalidOperationException>(() => AppUpdates.CheckAsync(client, "0.1.5-dev", false, default));
 });
 if (OperatingSystem.IsWindows())
 {

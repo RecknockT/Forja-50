@@ -2,7 +2,7 @@
 
 Aplicación de Windows 11 para trabajar con archivos y Git usando Qwen local. Alcance inicial: RTX 5070 Ti y RTX 5080 de escritorio, ambas de 16 GB, con 32 GB de RAM.
 
-Versión de desarrollo 0.1.4. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
+Versión de desarrollo 0.1.5. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
 
 ## Desarrollo
 
@@ -35,7 +35,7 @@ Para preparar el compilador oficial dentro del proyecto y producir ambos formato
 
 El workflow [Compilar Windows](https://github.com/RecknockT/Mi-IA-Local/actions/workflows/windows.yml) compila y prueba en Windows, y genera Setup, ZIP portable y un manifiesto con SHA-256. Se ejecuta al subir cambios a `main`, en pull requests y desde **Run workflow**. Las descargas aparecen como artifacts en cada ejecución durante 30 días. El runner no necesita una GPU y no descarga el modelo; sus pruebas no sustituyen la validación física.
 
-Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.4-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
+Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.5-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
 
 ## Estado
 

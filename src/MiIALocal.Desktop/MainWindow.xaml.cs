@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private HardwareReport? hardware;
     private CancellationTokenSource? operation;
     private TaskCompletionSource? operationFinished;
+    private string? pendingInstaller;
     private bool busy, closing, exiting, browserReady, synchronizingProfile = true;
     public MainWindow(AppPaths paths)
     {
@@ -155,6 +156,7 @@ public partial class MainWindow : Window
         ProjectButton.IsEnabled = available;
         ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
+        UpdateButton.IsEnabled = available;
         ModelFolderButton.IsEnabled = ImportButton.IsEnabled = ContextChoice.IsEnabled;
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -303,6 +305,40 @@ public partial class MainWindow : Window
     private async void Stop_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async _ => { await runtime.StopAsync(); Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible; });
     private void Cancel_Click(object sender, RoutedEventArgs e) => operation?.Cancel();
     private void Logs_Click(object sender, RoutedEventArgs e) => Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, Arguments = '"' + paths.Logs + '"' });
+    private async void Update_Click(object sender, RoutedEventArgs e)
+    {
+        await RunOperationAsync(async ct =>
+        {
+            StatusLabel.Text = "Buscando actualizaciones...";
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var portable = File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.flag"));
+            var update = await AppUpdates.CheckAsync(http, ReleaseProfile.Version, portable, timeout.Token);
+            if (update is null) { StatusLabel.Text = "Ya tenés la última versión disponible: " + ReleaseProfile.Version; return; }
+            if (MessageBox.Show(this, $"Está disponible {update.Version}. ¿Descargarla?\n\nLa descarga se verifica con SHA-256. Tus modelos, chats y ajustes se conservan.\n" + (portable ? "La edición portable se reemplaza manualmente." : "Al terminar se detendrá la IA y se abrirá el instalador."), "Actualizar Mi IA Local", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            var destination = Path.Combine(paths.Root, "updates", update.Asset.FileName);
+            await new VerifiedDownloader(http).DownloadAsync(update.Asset, destination, new Progress<PreparationProgress>(p =>
+            {
+                StatusLabel.Text = p.Stage; Progress.IsIndeterminate = p.Percentage is null;
+                if (p.Percentage is { } value) Progress.Value = value;
+            }), ct);
+            ct.ThrowIfCancellationRequested();
+            if (portable)
+            {
+                StatusLabel.Text = "Portable descargado y verificado.";
+                DetailLabel.Text = "Cerrá la aplicación, extraé el ZIP en una carpeta nueva y copiá la carpeta datos de tu portable anterior. No borres los datos anteriores hasta comprobar que funciona.";
+                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, Arguments = "/select,\"" + destination + "\"" });
+            }
+            else
+            {
+                await runtime.StopAsync();
+                Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible;
+                pendingInstaller = destination;
+            }
+        });
+        if (pendingInstaller is not null && !closing) Close();
+    }
+    private void Versions_Click(object sender, RoutedEventArgs e) => OpenExternal(AppUpdates.ReleasesUrl);
     private void Licenses_Click(object sender, RoutedEventArgs e) => OpenExternal("https://huggingface.co/fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer/tree/7da3e38b9ee7a6c8888cf2112d3c5a48a952a2a8");
     private static void OpenExternal(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     private void LogError(Exception error) => File.AppendAllText(Path.Combine(paths.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error + Environment.NewLine);
@@ -331,6 +367,20 @@ public partial class MainWindow : Window
             return;
         }
         try { Chat.Dispose(); } catch (Exception ex) { LogError(ex); }
+        if (pendingInstaller is { } installer)
+        {
+            try
+            {
+                var start = new ProcessStartInfo(installer) { UseShellExecute = true };
+                start.ArgumentList.Add("/DIR=" + AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+                Process.Start(start);
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                MessageBox.Show(this, "La actualización está verificada pero no se pudo abrir el instalador. Podés ejecutarlo manualmente:\n" + installer, "Mi IA Local");
+            }
+        }
         http.Dispose(); exiting = true; Close();
     }
 }

@@ -87,7 +87,7 @@ jobs:
           RELEASE_NOTES: |
             Version de desarrollo para Windows 11 x64, RTX 5070 Ti y RTX 5080 de escritorio de 16 GB, con 32 GB de RAM.
 
-            Incluye Setup y ZIP portable, tema oscuro, contexto predeterminado de 64K y configuracion avanzada. El modelo de unos 12,8 GB se descarga desde el programa; no se incluye en estos archivos.
+            Incluye Setup y ZIP portable, tema oscuro, contexto predeterminado de 64K, perfiles por GPU, configuracion avanzada y actualizador desde GitHub con verificacion SHA-256. El modelo de unos 12,8 GB se descarga desde el programa; no se incluye en estos archivos.
 
             Corrige el error al cerrar por primera vez con la X. La compilacion comprueba el cierre inicial, solicitudes repetidas y cancelacion de operaciones al cerrar.
 
