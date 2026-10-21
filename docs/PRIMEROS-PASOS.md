@@ -1,28 +1,32 @@
-# Primeros pasos
+# Primeros pasos con Forja 50
 
-Esta es una versión de desarrollo para Windows 11 y placas RTX 5070 Ti o RTX 5080 de escritorio de 16 GB. Necesita 32 GB de RAM y el controlador NVIDIA instalado. La 5070 Ti todavía requiere validación física.
+Versión de desarrollo para Windows 11 x64, RTX 5070 Ti o RTX 5080 de escritorio de 16 GB y 32 GB de RAM. La prueba de inferencia de los nuevos perfiles nativos en Forja está pendiente.
 
-1. Usá el Setup para instalar por usuario y crear el acceso directo, o extraé el ZIP portable y ejecutá `app\Mi IA Local.exe`. La portable guarda su configuración y conversaciones en `app\datos`; la instalada usa `%LOCALAPPDATA%\MiIALocal`.
-2. Revisá el equipo detectado. Cerrá juegos u otras IA antes de cargar el modelo.
-   El programa selecciona el perfil de la 5080 o de la 5070 Ti automáticamente. Hoy ambos parten de 64K; la prueba física de la 5070 Ti sigue pendiente. Los cambios manuales en configuración avanzada se conservan entre inicios.
-3. Elegí la ubicación del modelo. Para un modelo nuevo, reservá unos 30 GB de espacio libre durante la preparación. Si ya tenés exactamente el modelo compatible, usá **Usar modelo ya descargado**.
-4. Revisá las licencias y pulsá **Preparar IA**. El modelo pesa unos 12,8 GB; además se descargan el motor y las herramientas. Si cancelás, podés reanudar.
-5. Pulsá **Elegir proyecto** y seleccioná la carpeta de tu repositorio local. **64K** viene seleccionado y superó pruebas básicas en RTX 5080; uso prolongado y 5070 Ti siguen pendientes de validación. Podés elegir **32K** como alternativa.
-6. Pulsá **Iniciar IA**. Aparece el chat dentro de la ventana. Ejemplo: “Leé las instrucciones del repositorio y explicame cómo ejecutar las pruebas”.
-7. **Detener** libera la memoria usada por la IA. Al cerrar la aplicación también se detienen sus procesos. Los archivos y conversaciones se conservan.
+1. Instalá el Setup, o extraé el ZIP portable y ejecutá `app\Mi IA Local.exe`. No hace falta instalar CUDA ni compiladores.
+2. Revisá la placa detectada. El modo nativo selecciona 64K y prefill 896 en la 5080, o 512 en la 5070 Ti. La configuración activa aparece en el panel izquierdo.
+3. Elegí dónde guardar el modelo oficial Qwen3.8-27B de Todd Ballinger. Pesa 16,5 GB. Reservá el espacio que indique el programa para preparar modelo, motor y herramientas.
+4. Revisá las licencias y pulsá **Preparar IA**. Se descargan motor y modelo automáticamente. El descargador usa 16 conexiones y muestra GB, MB/s recientes y tiempo restante aproximado.
+5. **Pausar** conserva los bytes y fragmentos guardados. **Reanudar preparación** continúa incluso después de cerrar. No borres el `.part` ni la carpeta `.chunks-*` mientras la descarga esté incompleta.
+6. Elegí la carpeta de tu repositorio local con **Elegir proyecto**. No se copia tu repositorio.
+7. Cuando quieras hacer la prueba, cerrá otras aplicaciones que usen mucha VRAM y pulsá **Iniciar IA**. La IA no arranca automáticamente al instalar, descargar o configurar.
+8. **Detener** libera la memoria usada por la IA. Cerrar Forja detiene sus procesos propios y conserva los archivos y chats.
 
-Si falta Microsoft Edge WebView2 Runtime, esta versión indica el problema. Instalalo desde la [página oficial de Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/). Su preparación automática en el instalador sigue pendiente.
+## Configuración avanzada
 
-El panel izquierdo muestra la configuración actual. Con la IA detenida, **Configuración avanzada** permite cambiar memoria de historial, caché RAM, salida, razonamiento, MTP, Ngram, formato KV y muestreo. **Restaurar recomendada** carga los valores de referencia de 64K; solo se guardan al pulsar **Guardar**. Más contexto lógico no equivale a conservar todos esos tokens simultáneamente en GPU. Los límites numéricos válidos tampoco garantizan que una combinación entre en VRAM.
+Con la IA detenida, podés cambiar contexto, prefill, razonamiento, salida máxima, MTP, temperatura, CUDA Graph y presupuesto de visión. Prefill 0 recupera el valor automático por placa. La visión viene desactivada para dar prioridad al código. 128K es experimental en Windows nativo y puede no entrar en la memoria libre. Un valor numéricamente válido no garantiza que entre en VRAM.
 
-Podés abrir los registros con **Diagnóstico y registros**. Conservá los mensajes del error para poder revisarlo. Desinstalar la versión instalada conserva sus datos. Para mover la portable, cerrá la IA primero y conservá también su carpeta `datos`; un modelo importado desde otra ubicación seguirá dependiendo de esa ruta externa.
+## Si venís de una versión anterior
 
-## Actualizaciones
-Usá Buscar actualizaciones en el panel izquierdo. El programa consulta Releases de GitHub y verifica tamaño y SHA-256 antes de usar el paquete. Las versiones de desarrollo siguen también las publicaciones preliminares. La instalación conserva modelos, chats y ajustes. El modelo y los motores solo cambian al preparar los componentes de una nueva versión; no se actualizan durante un chat.
+Las instalaciones anteriores conservan su selección KVMem/Swift. Elegí **NInfer nativo Windows · modelo oficial de Todd** para pasar al nuevo backend, revisá sus licencias y prepará la IA. Se preservan los archivos y la configuración anterior.
 
-En Setup, al aceptar la actualización se descarga, se detiene la IA, se cierra la aplicación y se abre el instalador en la ubicación actual. En portable se descarga el ZIP: cerrá el programa, extraé en una carpeta nueva y copiá la carpeta datos anterior. Conservá el original hasta comprobar el funcionamiento. El botón Versiones en GitHub permite consultar notas o descargar manualmente si GitHub no responde o requiere iniciar sesión.
+El modelo de Todd y Swift son archivos diferentes: un parcial de Swift no puede reutilizarse como parte del modelo de Todd. Forja conserva cada uno por separado. Los parciales del mismo modelo sí se pueden retomar desde versiones anteriores del descargador.
 
-## Pausar y reanudar
-Durante la preparación usá Pausar. Al terminar de guardar el progreso aparecerá Reanudar preparación. Podés cerrar y volver a abrir sin borrar lo descargado. Se conservan bloques completos, y puede repetirse hasta el último lote de 32 MiB. La descarga muestra MB/s y tiempo restante aproximado; una conexión sin datos durante 30 segundos se reintenta automáticamente hasta tres veces.
+Si la descarga actual está trabada, pulsá Cancelar o Pausar y esperá a que se detenga antes de actualizar. Después usá **Buscar actualizaciones**. El actualizador verifica el paquete antes de abrir el instalador; en portable descarga el ZIP y explica cómo conservar `datos`.
 
-Si venís de 0.1.5 o anterior y la descarga quedó trabada: pulsá Cancelar, esperá a que se detenga, buscá actualizaciones e instalá esta versión. Después pulsá Reanudar preparación. No borres el archivo .part ni cambies la ubicación del modelo durante ese proceso.
+## Datos y diagnóstico
+
+La instalada usa `%LOCALAPPDATA%\MiIALocal`. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
+
+**Diagnóstico y registros** abre los mensajes de la aplicación. Si falta WebView2 Runtime, instalalo desde la [página oficial de Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/). Su preparación automática sigue pendiente.
+
+El análisis de fuentes y la diferencia entre Windows nativo y WSL2 están en [NInfer en Windows](NINFER-WINDOWS.md).

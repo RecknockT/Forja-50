@@ -8,7 +8,16 @@ public static class PreparationStorage
         {
             [Path.GetPathRoot(paths.Root)!] = 4_000_000_000
         };
-        if (string.IsNullOrWhiteSpace(settings.ImportedModel)) result[Path.GetPathRoot(paths.ModelDirectoryPath(settings))!] = 30_000_000_000;
+        if (string.IsNullOrWhiteSpace(paths.ImportedModelPath(settings)))
+        {
+            var drive = Path.GetPathRoot(paths.ModelDirectoryPath(settings))!;
+            if (settings.EngineMode == EngineMode.NInfer5080)
+            {
+                var remaining = ReleaseProfile.NinferModel.Bytes!.Value - VerifiedDownloader.PersistedBytes(ReleaseProfile.NinferModel, paths.ActiveModelPath(settings));
+                result[drive] = result.GetValueOrDefault(drive) + remaining + 1_000_000_000;
+            }
+            else result[drive] = 30_000_000_000;
+        }
         return result;
     }
     public static void Check(AppPaths paths, AppSettings settings)

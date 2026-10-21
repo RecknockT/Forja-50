@@ -1,4 +1,29 @@
-# Estado verificable de desarrollo
+# Estado verificable de Forja 50
+
+21 de octubre de 2026 · desarrollo 0.2.0.
+
+## Integración nativa y descargas
+
+- Aplicación .NET 10/WPF compilada sin advertencias ni errores.
+- 44 pruebas de núcleo y 6 comprobaciones de ventana/configuración aprobadas. Cubren perfil nativo, selección de GPU/dispositivo, preservación de ajustes manuales, argumentos, artefacto fijado, caché, integridad, pausa y reanudación de fragmentos fuera de orden, espacio libre al reanudar, conexiones estancadas, cierre y migración con copia de los ajustes anteriores.
+- Configuración nativa inicial: Qwen3.8-27B oficial de Todd, contexto/KV 64K, Q4, MTP-3, embeddings en RAM y visión desactivada. Prefill 896 en 5080 y 512 en 5070 Ti. Son puntos de partida, no perfiles anunciados como óptimos o físicamente validados en Forja.
+- Descargador de 16 conexiones sin límite artificial de MB/s, fragmentos persistentes de 64 MiB y velocidad reciente. Solicitudes reales al servidor del modelo respetaron Range.
+- Medición acotada de los mismos 64 MiB en esta conexión: una conexión 18,79 MB/s (3,58 s); dieciséis 24,18 MB/s (2,78 s). No es un benchmark del archivo completo ni una velocidad garantizada.
+- Vista previa nativa y configuración inicial revisadas con datos aislados, sin cargar el modelo ni iniciar inferencia.
+- Motor Windows compilado y publicado desde la revisión aee9106. Paquete de 243.616.338 bytes verificado por tamaño, SHA-256, procedencia y licencias; `ninfer-serve.exe --help` aprobado en esta PC sin cargar pesos. Preparación automática integrada, con importación opcional y restauración al motor administrado.
+- Prueba física de inferencia del nuevo backend: pendiente por pedido del usuario en ambas placas. Los resultados históricos de abajo corresponden a KVMem/Swift.
+
+## Pendientes de producto
+
+Pruebas de inferencia y uso prolongado del backend nativo; instalación en Windows limpio; preparación automática de WebView2; firma de editor y elección de licencia del código propio de Forja.
+
+## Alcance de la investigación
+
+Ver [NInfer en Windows](NINFER-WINDOWS.md) para distinguir el port Windows/MSVC de los resultados de WSL2 y del runtime Linux v1.5. Las cifras de terceros conservan sus condiciones de prueba y no se anuncian como mediciones de Forja.
+
+---
+
+# Historial de validación · backend KVMem
 
 20 de octubre de 2026.
 

@@ -25,9 +25,14 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
         try
         {
             if (!gpu.IsSupported || gpu.TotalMiB < 15000) throw new InvalidOperationException("La placa está fuera del alcance de esta versión.");
-            _ = ContextProfile.For(settings.ContextTokens);
-            settings.Tuning.Validate(settings.ContextTokens);
-            var profileKey = settings.ContextTokens + ":" + gpu.Index + ":" + paths.ModelPath(settings) + ":" + System.Text.Json.JsonSerializer.Serialize(settings.Tuning);
+            var ninfer5080 = settings.EngineMode == EngineMode.NInfer5080;
+            if (ninfer5080) settings.NativeTuning.Validate(settings.ContextTokens);
+            else { _ = ContextProfile.For(settings.ContextTokens); settings.Tuning.Validate(settings.ContextTokens); }
+            var engineExe = ninfer5080 ? paths.NinferEngineExe(settings) : paths.EngineExe;
+            var modelPath = paths.ActiveModelPath(settings);
+            var modelAsset = ReleaseProfile.ModelFor(settings.EngineMode);
+            var profileKey = string.Join(':', settings.EngineMode, settings.ContextTokens, gpu.Index, modelPath, engineExe,
+                ninfer5080 ? Ninfer5080Profile.Signature(settings.ContextTokens, settings.NinferVision) + System.Text.Json.JsonSerializer.Serialize(settings.NativeTuning) : System.Text.Json.JsonSerializer.Serialize(settings.Tuning));
             selectedProject = Path.GetFullPath(selectedProject);
             if (!Directory.Exists(selectedProject)) throw new DirectoryNotFoundException("Elegí una carpeta de proyecto válida.");
             if (State == RuntimeState.Ready && loadedProfile == profileKey && project == selectedProject && model is { HasExited: false } && agent is { HasExited: false }) return AgentConfiguration.ProjectUrl(AgentPort, project);
@@ -38,20 +43,26 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
             if (model is null || model.HasExited)
             {
                 if (model is not null) { await model.DisposeAsync(); model = null; }
-                if (!await VerifiedDownloader.MatchesAsync(paths.ModelPath(settings), ReleaseProfile.Model, ct)) throw new InvalidDataException("El modelo no coincide con esta versión. Usá Preparar IA para repararlo.");
+                if (!await VerifiedDownloader.MatchesAsync(modelPath, modelAsset, ct)) throw new InvalidDataException("El modelo no coincide con esta versión. Usá Preparar IA para repararlo.");
+                if (!File.Exists(engineExe)) throw new InvalidOperationException("Falta el motor de esta versión. Usá Preparar IA para repararlo.");
                 ModelPort = FreePort(); modelKey = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-                model = OwnedProcess.Start(paths.EngineExe, EngineArguments(paths.ModelPath(settings), gpu.Index, ModelPort, modelKey, settings.ContextTokens, settings.Tuning), Path.GetDirectoryName(paths.EngineExe)!, NewLog("modelo"));
+                var engineArguments = ninfer5080
+                    ? Ninfer5080Arguments(modelPath, ModelPort, modelKey, settings.ContextTokens, settings.NinferVision, gpu.Index, Ninfer5080Profile.For(gpu).PrefillChunk, settings.NativeTuning)
+                    : EngineArguments(modelPath, gpu.Index, ModelPort, modelKey, settings.ContextTokens, settings.Tuning);
+                model = OwnedProcess.Start(engineExe, engineArguments, Path.GetDirectoryName(engineExe)!, NewLog("modelo"));
                 await model.WaitForReadyAsync(client, new($"http://127.0.0.1:{ModelPort}/health"), "Bearer " + modelKey, TimeSpan.FromMinutes(4), ct);
                 loadedProfile = profileKey;
             }
             ct.ThrowIfCancellationRequested();
             AgentPort = FreePort(); AgentPassword = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
             var instruction = Path.Combine(paths.Root, "instrucciones.md"); AppPaths.AtomicWrite(instruction, AgentConfiguration.Instructions);
+            var agentTuning = ninfer5080 ? new EngineTuning { MaxOutput = settings.NativeTuning.MaxOutput, AgentTemperature = settings.NativeTuning.AgentTemperature } : settings.Tuning;
+            var agentModelName = ninfer5080 ? "Qwen3.8-27B · NInfer-5080" : "Qwen 27B · Mi IA Local";
             var environment = new Dictionary<string, string>
             {
                 ["XDG_DATA_HOME"] = Path.Combine(paths.Root, "agent-data"), ["XDG_STATE_HOME"] = Path.Combine(paths.Root, "agent-state"),
                 ["XDG_CACHE_HOME"] = Path.Combine(paths.Root, "agent-cache"), ["XDG_CONFIG_HOME"] = Path.Combine(paths.Root, "agent-config"),
-                ["OPENCODE_CONFIG_CONTENT"] = AgentConfiguration.Build(ModelPort, modelKey, instruction, settings.ContextTokens, settings.Tuning),
+                ["OPENCODE_CONFIG_CONTENT"] = AgentConfiguration.Build(ModelPort, modelKey, instruction, settings.ContextTokens, agentTuning, agentModelName),
                 ["OPENCODE_SERVER_PASSWORD"] = AgentPassword, ["OPENCODE_SERVER_USERNAME"] = "opencode",
                 ["OPENCODE_DISABLE_AUTOUPDATE"] = "true", ["OPENCODE_DISABLE_LSP_DOWNLOAD"] = "true", ["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true",
                 ["OPENCODE_DISABLE_SHARE"] = "true", ["DO_NOT_TRACK"] = "1", ["OTEL_SDK_DISABLED"] = "true",
@@ -95,6 +106,24 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
         string N(object value) => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
         string[] arguments = [modelPath, "--host", "127.0.0.1", "--port", N(port), "--api-key", key, "--device", N(device), "--model-id", "qwen-local", "--max-context", N(contextTokens), "--max-concurrency", "1", "--kvmem-budget", N(tuning.HistoryTokens), "--kvmem-gen-reserve", N(tuning.GenerationReserve), "--kvmem-host-mib", N(tuning.EffectiveHostMiB(contextTokens)), "--kvmem-sessions", "1", "--kvmem-sink-tokens", N(tuning.SinkTokens), "--kvmem-recent-tokens", N(tuning.RecentTokens), "--kv-dtype", tuning.KvType, "--gdn-state-fp16", "--prefill-chunk", N(tuning.PrefillChunk), "--spec", "mtp", "--draft-tokens", N(tuning.DraftTokens), "--ngram-draft-tokens", N(tuning.NgramDraftTokens), "--ngram-min-match", N(tuning.NgramMinMatch), "--device-profile", "off", "--default-thinking-budget", N(Math.Max(1, tuning.ThinkingTokens)), "--default-max-tokens", N(tuning.MaxOutput), "--temperature", N(tuning.Temperature), "--top-p", N(tuning.TopP), "--top-k", N(tuning.TopK), "--min-p", N(tuning.MinP)];
         return tuning.ThinkingTokens == 0 ? [.. arguments, "--no-thinking"] : arguments;
+    }
+    public static string[] Ninfer5080Arguments(string modelPath, int port, string apiKey, int contextTokens = Ninfer5080Profile.DefaultContext, bool vision = false, int device = 0, int automaticPrefill = Ninfer5080Profile.PrefillChunk, NativeEngineTuning? tuning = null)
+    {
+        tuning ??= new(); tuning.Validate(contextTokens);
+        string N(object value) => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
+        var arguments = new List<string>
+        {
+            modelPath, "--host", "127.0.0.1", "--port", N(port), "--api-key", apiKey, "--device", N(device), "--model-id", Ninfer5080Profile.ModelId,
+            "--max-context", N(contextTokens), "--kv-capacity", N(contextTokens), "--kv-dtype", Ninfer5080Profile.KvDtype,
+            "--spec", "mtp", "--draft-tokens", N(tuning.DraftTokens), "--prefill-chunk", N(tuning.EffectivePrefill(automaticPrefill)),
+            "--embedding-host", "--default-thinking-budget", N(Math.Max(1,tuning.ThinkingTokens)), "--default-max-tokens", N(tuning.MaxOutput),
+            "--prefix-checkpoint-policy", Ninfer5080Profile.CheckpointPolicy, "--max-concurrency", "1",
+            "--max-pending-requests", N(Ninfer5080Profile.MaxPendingRequests), "--pending-timeout-ms", N(Ninfer5080Profile.PendingTimeoutMs)
+        };
+        if (vision) arguments.AddRange(["--vision", "--vision-max-tokens", N(tuning.VisionMaxTokens)]);
+        if (!tuning.CudaGraph) arguments.Add("--no-cuda-graph");
+        if (tuning.ThinkingTokens == 0) arguments.Add("--no-thinking");
+        return [.. arguments];
     }
     public async ValueTask DisposeAsync() { await StopAsync(); gate.Dispose(); }
 }

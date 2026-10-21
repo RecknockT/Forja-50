@@ -2,13 +2,39 @@
 
 # Forja 50
 
-Aplicación de Windows 11 para trabajar con archivos y Git usando Qwen local. Alcance inicial: RTX 5070 Ti y RTX 5080 de escritorio, ambas de 16 GB, con 32 GB de RAM.
+Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. Solo RTX 5070 Ti y RTX 5080 de escritorio, 16 GB de VRAM y 32 GB de RAM.
 
-Versión de desarrollo 0.1.6. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
+La versión 0.2.0 de desarrollo incorpora el port Windows/MSVC de YukinoKaorisuna sobre ninfer-5080 de Todd Ballinger y su modelo oficial Qwen3.8-27B. El instalador y el portable no contienen pesos ni compiladores: el programa descarga el motor preparado, herramientas y modelo después de instalar.
 
-## Desarrollo
+## Perfiles por placa
 
-Desde PowerShell, en esta carpeta:
+| Ajuste inicial | RTX 5080 | RTX 5070 Ti |
+| --- | --- | --- |
+| Contexto / KV completos | 65.536 | 65.536 |
+| Prefill automático | 896 | 512 |
+| Caché KV | Q4 | Q4 |
+| MTP | 3 borradores | 3 borradores |
+| Embeddings | En RAM | En RAM |
+| Visión inicial | Desactivada | Desactivada |
+| Prueba de inferencia de este perfil en Forja | Pendiente | Pendiente |
+
+Los parámetros son puntos de partida para probar, no una afirmación de rendimiento óptimo. Los ajustes manuales de configuración avanzada se conservan. 128K queda marcado como experimental en Windows nativo. El backend anterior KVMem/Swift permanece como alternativa y conserva sus archivos.
+
+El [análisis de experiencias en Windows](docs/NINFER-WINDOWS.md) documenta fuentes, versiones, recetas, resultados de terceros y límites de validación. Los resultados de WSL2 no se atribuyen al port nativo.
+
+## Descarga a máxima velocidad disponible
+
+Dieciséis conexiones con trabajadores continuos y fragmentos de 64 MiB; una conexión rápida no espera a las demás. No se impone un límite de MB/s. La red, el servidor y el disco determinan la velocidad real. El indicador muestra transferencia reciente, no el promedio de todas las esperas desde el inicio.
+
+Pausar conserva el prefijo y los fragmentos completos, incompletos o fuera de orden. Reanudar continúa desde los bytes guardados. Los parciales anteriores son compatibles si pertenecen al mismo modelo. Cada descarga final se verifica con tamaño y SHA-256. Hay timeout de 30 segundos sin respuesta/datos, hasta tres reintentos y fallback a una conexión si el servidor no respeta Range.
+
+## Instalar y usar
+
+Seguí [Primeros pasos](docs/PRIMEROS-PASOS.md). El programa detecta la placa, permite elegir la carpeta del modelo y trabajar con un repositorio Git existente. El chat usa OpenCode y se comunica con el motor solo por loopback con claves efímeras.
+
+La instalación guarda datos en `%LOCALAPPDATA%\MiIALocal`; el portable usa `app\datos` junto al ejecutable. `--data-root` permite datos aislados. Se mantienen los nombres internos Mi-IA-Local, el AppId y los nombres de paquetes para actualizar instalaciones anteriores.
+
+## Desarrollar y generar paquetes
 
 ```powershell
 .\scripts\Preparar-Desarrollo.ps1
@@ -16,47 +42,19 @@ Desde PowerShell, en esta carpeta:
 .\scripts\Abrir-Desarrollo.ps1
 ```
 
-El SDK se guarda en `.tools`, sin cambiar el SDK global. `Abrir-Desarrollo.ps1` guarda los datos en `.dev-data`, separados de la instalación anterior. La versión instalada usa `%LOCALAPPDATA%\MiIALocal`. La portable incluye `portable.flag` y guarda sus datos en `datos` junto al ejecutable; `--data-root` permite elegir otra ubicación.
-
-Para generar un ZIP autocontenido, sin necesitar .NET instalado en el equipo destino:
-
-```powershell
-.\scripts\Compilar.ps1 -Publicar
-```
-
-Para generar además el instalador por usuario, indicar la ruta real de `ISCC.exe` de Inno Setup 6 mediante `-CompiladorInstalador`. El script imprime la carpeta de salida y el hash del ZIP. No incluye pesos, cachés, conversaciones ni datos de desarrollo.
-
-Para preparar el compilador oficial dentro del proyecto y producir ambos formatos:
+El SDK queda en `.tools`; las pruebas no descargan el modelo ni cargan la GPU. `Abrir-Desarrollo.ps1` usa `.dev-data`. Para Setup y portable autocontenidos:
 
 ```powershell
 .\scripts\Preparar-Instalador.ps1
 .\scripts\Compilar.ps1 -Publicar -CompiladorInstalador "$PWD\.tools\inno\ISCC.exe"
 ```
 
-## Compilaciones en GitHub
+[Compilar Windows](https://github.com/RecknockT/Mi-IA-Local/actions/workflows/windows.yml) ejecuta las comprobaciones en GitHub. Una etiqueta coincidente con `ReleaseProfile.Version`, por ejemplo `v0.2.0-dev`, genera una prerelease con Setup, portable y manifiesto de integridad.
 
-El workflow [Compilar Windows](https://github.com/RecknockT/Mi-IA-Local/actions/workflows/windows.yml) compila y prueba en Windows, y genera Setup, ZIP portable y un manifiesto con SHA-256. Se ejecuta al subir cambios a `main`, en pull requests y desde **Run workflow**. Las descargas aparecen como artifacts en cada ejecución durante 30 días. El runner no necesita una GPU y no descarga el modelo; sus pruebas no sustituyen la validación física.
+El [workflow del motor nativo](.github/workflows/native-engine.yml) compila la revisión inmutable y las herramientas declaradas en `build/ninfer-windows.lock.json`. Usa componentes CUDA portables con hashes oficiales y MSVC 14.44 en un runner Windows; no instala controladores en la PC del usuario. Comprobar `--help` no equivale a validar inferencia.
 
-Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.6-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
+## Estado y licencias
 
-## Estado
+La validación de la descarga, configuración, rutas, cierre, pausa y migración se automatiza. Windows limpio, uso prolongado y pruebas físicas del nuevo backend en ambas placas siguen pendientes. Los paquetes son de desarrollo y no tienen firma de editor.
 
-- Interfaz nativa en español, selección de repositorio, importación de modelo, descarga reanudable, inicio y detención de procesos propios.
-- Chat integrado con archivos, terminal y Git del proyecto. Motor y agente escuchan solo en loopback con autenticación efímera.
-- Contexto predeterminado 64K, caché KV en RAM 4 GiB y alternativa 32K. Historial GPU 24K + reserva 8K en ambos perfiles. Pruebas básicas de recuperación aprobadas en RTX 5080 con entradas de 43K y 52K; pendiente uso prolongado y prueba física en 5070 Ti.
-- Tema oscuro en ventana y chat, panel con configuración activa y ajustes avanzados con validación y restauración de recomendados. Incluye presupuesto KV, salida, razonamiento, MTP, Ngram y muestreo. Los cambios se realizan con la IA detenida.
-- Detector de placa y perfiles separados para 5080 y 5070 Ti, dentro del mismo programa y con el mismo modelo. Ambos usan inicialmente 64K y el mismo presupuesto de memoria; 5070 Ti sigue pendiente de prueba física. Los ajustes manuales se conservan. Restaurar recomendados vuelve al perfil de la placa detectada.
-- Pruebas automatizadas sobre hardware, rutas ZIP, descargas, configuración, Unicode y procesos. Ver `docs/ESTADO.md` para límites de validación.
-- Veintiuna pruebas de núcleo y cuatro regresiones sobre la ventana real: primera X, solicitudes seguidas, cierre durante una operación cancelable y rechazo de contexto incompatible. Se ejecutan al compilar y en GitHub Actions.
-- Setup comprobado en esta PC: instalación, arranque y desinstalación. ZIP portable comprobado con datos locales y 64K. Windows limpio, sesiones prolongadas y 5070 Ti física siguen pendientes antes de distribuirlo como versión final.
-
-## Licencias
-
-Las condiciones del modelo Swift y sus avisos están en `licenses/model`. No dar por hecho que todo uso comercial está permitido sin condiciones. Los motores y herramientas conservan sus licencias de origen. La licencia pública de este proyecto todavía está pendiente de elección.
-
-## Descargas y pausa
-Forja 50 usa hasta cuatro conexiones para archivos grandes, con bloques de 8 MiB y verificación SHA-256 del archivo completo. Si el servidor no admite fragmentos, usa una sola conexión. Después de 30 segundos sin respuesta o sin recibir datos, reintenta hasta tres veces con espera progresiva.
-
-La interfaz muestra GB, MB/s y tiempo estimado. Pausar conserva los bloques completos guardados; Reanudar preparación continúa desde ese punto, incluso después de cerrar. Los parciales de Mi IA Local son compatibles. Se puede repetir hasta el último lote en memoria (máximo 32 MiB). El indicador de tiempo es aproximado y las conexiones paralelas no garantizan mayor velocidad en todas las redes.
-
-El nombre público es Forja 50, exclusivamente para RTX 5070 Ti y RTX 5080 de escritorio. Se mantienen el identificador de instalación, rutas de datos y nombres de paquetes Mi-IA-Local para conservar las actualizaciones de versiones anteriores.
+El [modelo oficial de Todd](https://huggingface.co/ninfer-5080/Qwen3.8-27B-RTX5080) declara Apache-2.0. Los avisos del motor, sus dependencias y CUDA están en `licenses/ninfer-native`. El modelo Swift de compatibilidad conserva sus propias condiciones en `licenses/model`. La licencia pública del código propio de Forja todavía está pendiente de elección.

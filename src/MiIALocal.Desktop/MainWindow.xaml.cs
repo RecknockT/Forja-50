@@ -15,7 +15,7 @@ public partial class MainWindow : Window
 {
     private readonly AppPaths paths;
     private readonly AppSettings settings;
-    private readonly HttpClient http = new(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.None }) { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient http = new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.None, MaxConnectionsPerServer = 32, ConnectTimeout = TimeSpan.FromSeconds(15) }) { Timeout = Timeout.InfiniteTimeSpan };
     private readonly Provisioner provisioner;
     private readonly RuntimeSupervisor runtime;
     private readonly DispatcherTimer healthTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -24,16 +24,14 @@ public partial class MainWindow : Window
     private TaskCompletionSource? operationFinished;
     private string? pendingInstaller;
     private bool preparing, preparationPaused;
-    private bool busy, closing, exiting, browserReady, synchronizingProfile = true;
+    private bool busy, closing, exiting, browserReady, synchronizingProfile = true, populatingContext, populatingMode;
     public MainWindow(AppPaths paths)
     {
         InitializeComponent(); NativeWindowTheme.Attach(this); this.paths = paths; settings = paths.LoadSettings();
-        _ = ContextProfile.For(settings.ContextTokens);
-        ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
         LicenseCheck.IsChecked = settings.LicenseAccepted;
         runtime.StateChanged += (_, message) => Dispatcher.Invoke(() => { StatusLabel.Text = message; UpdateConfigurationSummary(); });
-        UpdateProject(); ModelLocation.Text = string.IsNullOrWhiteSpace(settings.ImportedModel) ? paths.ModelDirectoryPath(settings) : paths.ModelPath(settings);
+        UpdateProject(); ApplyModeToUi();
         Loaded += async (_, _) =>
         {
             await InspectHardwareAsync();
@@ -45,7 +43,7 @@ public partial class MainWindow : Window
                 var cancellationObserved = false;
                 if (rejectContext)
                 {
-                    settings.UseRecommendedProfile = false; settings.ContextTokens = 65536; settings.Tuning.HistoryTokens = 32768;
+                    settings.EngineMode = EngineMode.KvMem; ApplyModeToUi(); settings.UseRecommendedProfile = false; settings.ContextTokens = 65536; settings.Tuning.HistoryTokens = 32768;
                     ContextChoice.SelectedIndex = 1; ContextChoice.SelectedIndex = 0;
                 }
                 Closed += (_, _) =>
@@ -75,7 +73,8 @@ public partial class MainWindow : Window
             }
             if (App.Argument("--preview-advanced") is { } advancedImage)
             {
-                var dialog = new AdvancedSettingsWindow(settings) { Owner = this }; dialog.Show(); await Task.Delay(300); dialog.UpdateLayout();
+                Window dialog = settings.EngineMode == EngineMode.NInfer5080 ? new NativeSettingsWindow(settings) : new AdvancedSettingsWindow(settings);
+                dialog.Owner = this; dialog.Show(); await Task.Delay(300); dialog.UpdateLayout();
                 var visual = (FrameworkElement)dialog.Content;
                 var bitmap = new RenderTargetBitmap((int)visual.ActualWidth, (int)visual.ActualHeight, 96, 96, PixelFormats.Pbgra32);
                 var drawing = new DrawingVisual(); using (var dc = drawing.RenderOpen()) dc.DrawRectangle(new VisualBrush(visual), null, new Rect(0, 0, visual.ActualWidth, visual.ActualHeight));
@@ -150,8 +149,11 @@ public partial class MainWindow : Window
             GpuLabel.Text = hardware.SelectedGpu?.Profile ?? hardware.Gpus.FirstOrDefault()?.Name ?? "No se detectó una placa NVIDIA";
             RamLabel.Text = $"{hardware.RamGiB:0.0} GiB de RAM · Windows {Environment.OSVersion.Version.Build}";
             StatusLabel.Text = hardware.Problem ?? (provisioner.IsPrepared(settings) ? "Tu IA está preparada. Elegí un proyecto e iniciá." : "Equipo compatible con el perfil. Prepará la IA para empezar.");
-            DetailLabel.Text = hardware.Problem is null ? $"RTX 5070 Ti y RTX 5080 de escritorio · contexto {settings.ContextTokens / 1024}K" : "La descarga permanece deshabilitada en equipos fuera del alcance.";
+            DetailLabel.Text = hardware.Problem is null
+                ? (settings.EngineMode == EngineMode.NInfer5080 ? $"NInfer-5080 · RTX 5070 Ti y RTX 5080 · contexto {settings.ContextTokens / 1024}K" : $"RTX 5070 Ti y RTX 5080 de escritorio · contexto {settings.ContextTokens / 1024}K")
+                : "La descarga permanece deshabilitada en equipos fuera del alcance.";
             if (paths.SettingsRecoveryMessage is { } recovery) DetailLabel.Text = recovery;
+            if (settings.EngineMode == EngineMode.NInfer5080 && Ninfer5080Profile.WarningFor(hardware.SelectedGpu?.Name ?? "", settings.ContextTokens) is { } ninferWarning) DetailLabel.Text = ninferWarning;
         }
         catch (Exception ex) { StatusLabel.Text = ex.Message; GpuLabel.Text = "No se pudo comprobar la placa"; LogError(ex); }
         RefreshControls();
@@ -164,10 +166,13 @@ public partial class MainWindow : Window
         StartButton.Content = runtime.State == RuntimeState.Ready ? "Abrir proyecto" : "Iniciar IA";
         StopButton.IsEnabled = available && runtime.State != RuntimeState.Stopped;
         PrepareButton.IsEnabled = available && compatible && runtime.State != RuntimeState.Ready;
-        PrepareButton.Content = preparationPaused || File.Exists(paths.ModelPath(settings) + ".part") ? "Reanudar preparación" : "Preparar IA";
+        PrepareButton.Content = preparationPaused || VerifiedDownloader.HasPartial(ReleaseProfile.ModelFor(settings.EngineMode), paths.ActiveModelPath(settings)) ? "Reanudar preparación" : "Preparar IA";
         ProjectButton.IsEnabled = available;
         ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
+        NinferEngineButton.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
+        ResetNinferEngineButton.IsEnabled = NinferEngineButton.IsEnabled;
+        NinferVisionCheck.IsEnabled = ContextChoice.IsEnabled;
         UpdateButton.IsEnabled = available;
         ModelFolderButton.IsEnabled = ImportButton.IsEnabled = ContextChoice.IsEnabled;
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
@@ -175,30 +180,137 @@ public partial class MainWindow : Window
     }
     private void ContextChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (settings is null || paths is null) return; // XAML may raise this during InitializeComponent.
-        var requestedContext = ContextChoice.SelectedIndex == 1 ? 65536 : 32768;
-        try { settings.Tuning.Validate(requestedContext); }
+        if (settings is null || paths is null || populatingContext) return; // XAML may raise this during InitializeComponent.
+        var options = ContextOptions;
+        var index = ContextChoice.SelectedIndex;
+        if (index < 0 || index >= options.Length) return;
+        var requestedContext = options[index];
+        try
+        {
+            if (settings.EngineMode == EngineMode.NInfer5080) Ninfer5080Profile.Validate(requestedContext);
+            else settings.Tuning.Validate(requestedContext);
+        }
         catch (InvalidDataException ex)
         {
-            ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
+            PopulateContextChoices();
             DetailLabel.Text = ex.Message + " Revisá Configuración avanzada antes de cambiar de contexto.";
             return;
         }
         settings.ContextTokens = requestedContext;
         if (!synchronizingProfile) settings.UseRecommendedProfile = false;
         paths.SaveSettings(settings);
-        DetailLabel.Text = settings.ContextTokens == 65536 ? "64K: pruebas básicas aprobadas en RTX 5080; uso prolongado y 5070 Ti pendientes de validar." : "32K: perfil de referencia. El historial se resume cuando se acerca al límite.";
+        UpdateContextDetail();
         UpdateConfigurationSummary();
+    }
+    private int[] ContextOptions => settings.EngineMode == EngineMode.NInfer5080 ? Ninfer5080Profile.Contexts : [32768, 65536];
+    private static string ContextLabel(EngineMode mode, int tokens) => tokens switch
+    {
+        131072 => "128K · NInfer-5080 · requiere la GPU casi libre",
+        65536 => mode == EngineMode.NInfer5080 ? "64K · NInfer-5080 (recomendado)" : "64K · experimental, pruebas básicas en 5080",
+        _ => "32K · perfil de referencia"
+    };
+    private void PopulateContextChoices()
+    {
+        var guard = populatingContext; populatingContext = true;
+        try
+        {
+            ContextChoice.Items.Clear();
+            var options = ContextOptions;
+            foreach (var tokens in options) ContextChoice.Items.Add(ContextLabel(settings.EngineMode, tokens));
+            var index = Array.IndexOf(options, settings.ContextTokens);
+            ContextChoice.SelectedIndex = index >= 0 ? index : 0;
+        }
+        finally { populatingContext = guard; }
+    }
+    private void ApplyModeToUi()
+    {
+        var ninfer = settings.EngineMode == EngineMode.NInfer5080;
+        var guard = populatingMode; populatingMode = true;
+        try
+        {
+            ModeChoice.SelectedIndex = ninfer ? 1 : 0;
+            NinferVisionCheck.IsChecked = settings.NinferVision;
+            ModeHint.Text = ninfer
+                ? "Modelo oficial de Todd Ballinger con motor nativo de Windows. La configuración se adapta a tu placa; el motor se descarga al preparar la IA."
+                : "Modo Forja (KVMem 0.18.0): Qwen 27B Swift 1.5 IQ3_S, contexto 32K o 64K con caché KV en RAM. Perfil probado en esta RTX 5080.";
+            NinferEngineButton.Visibility = NinferEngineLabel.Visibility = NinferVisionCheck.Visibility = ninfer ? Visibility.Visible : Visibility.Collapsed;
+            ResetNinferEngineButton.Visibility = ninfer && !string.IsNullOrWhiteSpace(settings.NinferEnginePath) ? Visibility.Visible : Visibility.Collapsed;
+            NinferEngineLabel.Text = paths.HasNinferEngine(settings) ? "Motor: " + paths.NinferEngineExe(settings) : string.IsNullOrWhiteSpace(settings.NinferEnginePath) ? "Motor: se descargará y verificará al preparar la IA." : "Motor importado no encontrado. Elegí otro o restaurá el automático.";
+            DownloadNote.Text = ninfer
+                ? "Qwen3.8-27B pesa 16,5 GB. Descarga a máxima velocidad disponible con 16 conexiones, pausa, reanudación y verificación SHA-256."
+                : "El modelo pesa unos 12,8 GB. Elegí dónde guardarlo: la descarga se puede reanudar y se verifica antes de usarla.";
+            ContextHint.Text = ninfer
+                ? "64K es el perfil inicial en ambas placas. 128K es experimental en Windows nativo y puede no entrar en la VRAM libre."
+                : "64K permite un historial más largo mediante KVMem y reserva hasta 4 GiB de caché en RAM. No equivale a atender 64K completos en GPU. Cambialo con la IA detenida.";
+            ModelLocation.Text = string.IsNullOrWhiteSpace(paths.ImportedModelPath(settings)) ? paths.ModelDirectoryPath(settings) : paths.ActiveModelPath(settings);
+            ImportButton.Content = ninfer ? "Usar artefacto NInfer-5080 ya descargado" : "Usar modelo ya descargado";
+            ModeFootnote.Text = ninfer
+                ? "Port nativo de Windows basado en ninfer-5080 de Todd Ballinger. Modelo Apache-2.0. La prueba de inferencia de estos perfiles en Forja sigue pendiente."
+                : "La variante Swift tiene condiciones propias para uso comercial. La visión está desactivada para reservar memoria al código. La 5070 Ti todavía requiere validación física de esta aplicación.";
+            PopulateContextChoices();
+        }
+        finally { populatingMode = guard; }
+        UpdateConfigurationSummary();
+    }
+    private void UpdateContextDetail()
+    {
+        var warning = settings.EngineMode == EngineMode.NInfer5080 ? Ninfer5080Profile.WarningFor(hardware?.SelectedGpu?.Name ?? "", settings.ContextTokens) : null;
+        DetailLabel.Text = warning ?? (settings.EngineMode == EngineMode.NInfer5080
+            ? (settings.ContextTokens == 131072 ? "128K: experimental en Windows nativo; todavía no validamos el contexto completo." : "64K: contexto recomendado del modo NInfer-5080.")
+            : (settings.ContextTokens == 65536 ? "64K: pruebas básicas aprobadas en RTX 5080; uso prolongado y 5070 Ti pendientes de validar." : "32K: perfil de referencia. El historial se resume cuando se acerca al límite."));
+    }
+    private void ModeChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (settings is null || paths is null || populatingMode) return;
+        settings.EngineMode = ModeChoice.SelectedIndex == 1 ? EngineMode.NInfer5080 : EngineMode.KvMem; settings.LicenseAccepted = false; LicenseCheck.IsChecked = false;
+        if (settings.EngineMode == EngineMode.NInfer5080) { if (settings.ContextTokens is not (65536 or 131072)) settings.ContextTokens = Ninfer5080Profile.DefaultContext; }
+        else if (settings.ContextTokens is not (32768 or 65536)) settings.ContextTokens = ReleaseProfile.Context;
+        paths.SaveSettings(settings);
+        ApplyModeToUi(); RefreshControls(); UpdateContextDetail();
+        StatusLabel.Text = settings.EngineMode == EngineMode.NInfer5080 ? "Motor nativo seleccionado. Pulsá Preparar IA para descargar lo necesario." : "Modo Forja seleccionado. Prepará la IA para empezar.";
+    }
+    private void ChooseNinferEngine_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        var dialog = new OpenFileDialog { Title = "Elegí el motor ninfer-serve compilado del proyecto ninfer-5080", Filter = "Motor ninfer-serve (ninfer-serve.exe)|ninfer-serve.exe|Ejecutable (*.exe)|*.exe" };
+        if (dialog.ShowDialog(this) != true) return;
+        if (!string.Equals(Path.GetFileName(dialog.FileName), "ninfer-serve.exe", StringComparison.OrdinalIgnoreCase)) { StatusLabel.Text = "Elegí el ejecutable ninfer-serve.exe compilado del proyecto ninfer-5080."; return; }
+        settings.NinferEnginePath = dialog.FileName; paths.SaveSettings(settings);
+        ApplyModeToUi(); RefreshControls();
+        StatusLabel.Text = "Motor ninfer-serve elegido. Prepará el artefacto para descargarlo.";
+    }
+    private void ResetNinferEngine_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        settings.NinferEnginePath = ""; paths.SaveSettings(settings);
+        ApplyModeToUi(); RefreshControls(); UpdateConfigurationSummary();
+        StatusLabel.Text = "Motor automático restaurado. Prepará la IA para descargarlo y verificarlo.";
+    }
+    private void NinferVision_Click(object sender, RoutedEventArgs e)
+    {
+        if (settings is null || populatingMode) return;
+        if (runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) { NinferVisionCheck.IsChecked = settings.NinferVision; return; }
+        settings.NinferVision = NinferVisionCheck.IsChecked == true; paths.SaveSettings(settings); UpdateConfigurationSummary();
     }
     private void Advanced_Click(object sender, RoutedEventArgs e)
     {
         if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        if (settings.EngineMode == EngineMode.NInfer5080)
+        {
+            var native = new NativeSettingsWindow(settings) { Owner = this };
+            if (native.ShowDialog() != true) return;
+            settings.NativeTuning = native.Result; settings.ContextTokens = native.ContextTokens;
+            settings.UseRecommendedProfile = false;
+            paths.SaveSettings(settings); ApplyModeToUi(); RefreshControls(); UpdateContextDetail();
+            StatusLabel.Text = "Configuración nativa guardada. Se aplicará al iniciar la IA.";
+            return;
+        }
         var dialog = new AdvancedSettingsWindow(settings) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         settings.Tuning = dialog.Result; settings.ContextTokens = dialog.ContextTokens;
         settings.UseRecommendedProfile = hardware?.SelectedGpu is { } gpu && GpuProfiles.For(gpu).Matches(settings.ContextTokens, settings.Tuning);
         synchronizingProfile = true;
-        ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
+        PopulateContextChoices();
         synchronizingProfile = false;
         paths.SaveSettings(settings); UpdateConfigurationSummary();
         StatusLabel.Text = "Configuración guardada. Se aplicará al iniciar la IA.";
@@ -207,6 +319,26 @@ public partial class MainWindow : Window
     {
         if (settings is null || ConfigurationSummary is null) return;
         var t = settings.Tuning;
+        if (settings.EngineMode == EngineMode.NInfer5080)
+        {
+            var native = settings.NativeTuning;
+            var prefill = native.EffectivePrefill(hardware?.SelectedGpu is { } detected ? Ninfer5080Profile.For(detected).PrefillChunk : Ninfer5080Profile.PrefillChunk);
+            ConfigurationSummary.Text = $"Perfil: {hardware?.SelectedGpu?.Profile ?? "por detectar"}\n"
+                + "NInfer-5080 · port nativo de YukinoKaorisuna\n"
+                + "Qwen3.8-27B · artefacto oficial (16,5 GB)\n"
+                + (paths.HasNinferEngine(settings) ? "Motor: ninfer-serve listo" : "Motor: descarga automática") + "\n"
+                + "OpenCode 1.19.3 · Git 2.53.0.3 · Node 24.19.0\n"
+                + $"Contexto / KV: {settings.ContextTokens:N0} tokens\n"
+                + $"KV: {Ninfer5080Profile.KvDtype} · MTP: {native.DraftTokens} borradores\n"
+                + $"Prefill: {prefill} · {(native.PrefillChunk == 0 ? "automático por placa" : "manual")}\n"
+                + $"Visión: {(settings.NinferVision ? $"activada · {native.VisionMaxTokens} tokens" : "desactivada")}\n"
+                + $"Razonamiento: {native.ThinkingTokens:N0} · salida: {native.MaxOutput:N0}\n"
+                + $"Caché de prefijos: {Ninfer5080Profile.CheckpointPolicy}\n"
+                + $"Embeddings en RAM · CUDA Graph: {(native.CudaGraph ? "activado" : "desactivado")}\n"
+                + "1 sesión · 1 petición a la vez\n"
+                + "Red: solo 127.0.0.1\nPrueba en GPU de Forja: pendiente";
+            return;
+        }
         ConfigurationSummary.Text = $"Perfil: {hardware?.SelectedGpu?.Profile ?? "por detectar"}\nAjustes: {(settings.UseRecommendedProfile ? "automáticos" : "personalizados")}\nQwen 27B · Swift 1.5 · IQ3_S\nNInfer / KVMem 0.18.0\nOpenCode 1.19.3\nGit 2.53.0.3 · Node 24.19.0\nContexto: {settings.ContextTokens:N0} tokens\nHistorial GPU: {t.HistoryTokens:N0}\nReserva GPU: {t.GenerationReserve:N0}\nCaché RAM: {t.EffectiveHostMiB(settings.ContextTokens):N0} MiB\nKV: {t.KvType} · GDN: FP16\nInicio / reciente: {t.SinkTokens} / {t.RecentTokens}\nPrefill: {t.PrefillChunk} · MTP: {t.DraftTokens} borradores\nNgram: {t.NgramDraftTokens} · mínimo {t.NgramMinMatch}\nMTP adaptativo: desactivado\nVentana MTP: historial completo\nRazonamiento: {t.ThinkingTokens:N0} tokens\nSalida máxima: {t.MaxOutput:N0} tokens\nTemperatura motor / agente: {t.Temperature} / {t.AgentTemperature}\nTop P: {t.TopP} · Top K: {t.TopK}\nMin P: {t.MinP}\n1 sesión · 1 petición a la vez\nVisión / caché SSD: desactivadas\nPerfil automático: desactivado\nRed: solo 127.0.0.1\nHistorial: resumen automático";
     }
     private void ApplyHardwareProfile()
@@ -214,7 +346,7 @@ public partial class MainWindow : Window
         if (hardware?.SelectedGpu is not { } gpu) return;
         _ = GpuProfiles.Apply(settings, gpu);
         synchronizingProfile = true;
-        ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
+        PopulateContextChoices();
         synchronizingProfile = false;
         paths.SaveSettings(settings); UpdateConfigurationSummary();
     }
@@ -246,13 +378,16 @@ public partial class MainWindow : Window
     }
     private async void Import_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Seleccioná el modelo Qwen de esta versión", Filter = "Modelo NInfer (*.ninfer)|*.ninfer" };
+        var ninfer = settings.EngineMode == EngineMode.NInfer5080;
+        var asset = ReleaseProfile.ModelFor(settings.EngineMode);
+        var dialog = new OpenFileDialog { Title = ninfer ? "Seleccioná el artefacto qwen3_8_27b.ninfer" : "Seleccioná el modelo Qwen de esta versión", Filter = "Modelo NInfer (*.ninfer)|*.ninfer" };
         if (dialog.ShowDialog(this) != true) return;
         await RunOperationAsync(async ct =>
         {
             StatusLabel.Text = "Verificando el modelo elegido...";
-            if (!await VerifiedDownloader.MatchesAsync(dialog.FileName, ReleaseProfile.Model, ct)) throw new InvalidDataException("Ese archivo no coincide con el modelo de esta versión.");
-            settings.ImportedModel = dialog.FileName; paths.SaveSettings(settings); ModelLocation.Text = dialog.FileName;
+            if (!await VerifiedDownloader.MatchesAsync(dialog.FileName, asset, ct)) throw new InvalidDataException(ninfer ? "Ese archivo no es el artefacto oficial qwen3_8_27b.ninfer (SHA-256 c4a7e9…b050e21)." : "Ese archivo no coincide con el modelo de esta versión.");
+            if (ninfer) settings.ImportedNinferModel = dialog.FileName; else settings.ImportedModel = dialog.FileName;
+            paths.SaveSettings(settings); ModelLocation.Text = dialog.FileName;
             StatusLabel.Text = "Modelo verificado. Preparar IA descargará solo los componentes que falten.";
         });
     }
@@ -282,7 +417,10 @@ public partial class MainWindow : Window
         hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
         ApplyHardwareProfile();
         var gpu = hardware.SelectedGpu!;
-        if (runtime.State != RuntimeState.Ready && gpu.FreeMiB < 13000) throw new InvalidOperationException("Hay otra aplicación usando mucha memoria de la GPU. Detené la otra IA o cerrá el juego y reintentá; no se cerrará ningún programa ajeno.");
+        var minimumFree = settings.EngineMode == EngineMode.NInfer5080 ? (settings.ContextTokens == 131072 ? 15500 : Ninfer5080Profile.For(gpu).MinimumFreeMiB) : 13000;
+        if (runtime.State != RuntimeState.Ready && gpu.FreeMiB < minimumFree) throw new InvalidOperationException(settings.EngineMode == EngineMode.NInfer5080
+            ? $"Este perfil necesita al menos unos {minimumFree:N0} MiB libres antes de iniciar. Cerrá otras aplicaciones que usen la GPU y reintentá; no se cerrará ningún programa ajeno."
+            : "Hay otra aplicación usando mucha memoria de la GPU. Detené la otra IA o cerrá el juego y reintentá; no se cerrará ningún programa ajeno.");
         var url = await runtime.StartAsync(settings, gpu, settings.LastProject, ct);
         await OpenChatAsync(url); DetailLabel.Text = "Proyecto: " + settings.LastProject;
     });
@@ -362,7 +500,7 @@ public partial class MainWindow : Window
         if (pendingInstaller is not null && !closing) Close();
     }
     private void Versions_Click(object sender, RoutedEventArgs e) => OpenExternal(AppUpdates.ReleasesUrl);
-    private void Licenses_Click(object sender, RoutedEventArgs e) => OpenExternal("https://huggingface.co/fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer/tree/7da3e38b9ee7a6c8888cf2112d3c5a48a952a2a8");
+    private void Licenses_Click(object sender, RoutedEventArgs e) => OpenExternal(settings.EngineMode == EngineMode.NInfer5080 ? "https://huggingface.co/ninfer-5080/Qwen3.8-27B-RTX5080" : "https://huggingface.co/fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer/tree/7da3e38b9ee7a6c8888cf2112d3c5a48a952a2a8");
     private static void OpenExternal(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     private void LogError(Exception error) => File.AppendAllText(Path.Combine(paths.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error + Environment.NewLine);
     private void Window_Closing(object? sender, CancelEventArgs e)

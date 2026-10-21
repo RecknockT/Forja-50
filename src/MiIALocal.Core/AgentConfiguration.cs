@@ -10,11 +10,10 @@ public static class AgentConfiguration
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(project))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         return $"http://127.0.0.1:{port}/{encoded}/session";
     }
-    public static string Build(int modelPort, string apiKey, string instructionFile, int contextTokens = ReleaseProfile.Context, EngineTuning? tuning = null)
+    public static string Build(int modelPort, string apiKey, string instructionFile, int contextTokens = ReleaseProfile.Context, EngineTuning? tuning = null, string modelName = "Qwen 27B · Mi IA Local")
     {
-        var profile = ContextProfile.For(contextTokens);
-        tuning ??= new(); tuning.Validate(contextTokens);
-        var model = new { name = "Qwen 27B · Mi IA Local", tool_call = true, limit = new { context = profile.Tokens, output = tuning.MaxOutput } };
+        tuning ??= new();
+        var model = new { name = modelName, tool_call = true, limit = new { context = contextTokens, output = tuning.MaxOutput } };
         return JsonSerializer.Serialize(new Dictionary<string, object>
         {
             ["model"] = "local/qwen-local", ["small_model"] = "local/qwen-local", ["enabled_providers"] = new[] { "local" },

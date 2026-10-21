@@ -29,6 +29,52 @@ static class DownloadTests
             assert(peak == 4 && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "No hubo paralelismo real o se mezclaron fragmentos.");
             assert(reports.Any(p => p.BytesPerSecond > 0 && p.Remaining is not null && p.TransferDetails.Contains("MB/s")), "Falta velocidad o ETA.");
         });
+        await test("Descarga continua: conexiones rápidas no esperan al primer fragmento", async () =>
+        {
+            var destination = Path.Combine(root, "continuous.bin");
+            var advanced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var client = new HttpClient(new AsyncHandler(async (request, ct) => {
+                var from = request.Headers.Range!.Ranges.Single().From;
+                if (from == 0) await advanced.Task.WaitAsync(ct);
+                if (from >= 32768) advanced.TrySetResult();
+                await Task.Delay(2, ct); return Range(request);
+            }));
+            await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, default);
+            assert(advanced.Task.IsCompleted && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "Se esperó a completar el lote anterior.");
+        });
+        await test("Pausa: guardar fragmentos fuera de orden y no descargarlos otra vez", async () =>
+        {
+            var destination = Path.Combine(root, "out-of-order.bin"); using var pause = new CancellationTokenSource();
+            using (var client = new HttpClient(new AsyncHandler(async (request, ct) => {
+                var from = request.Headers.Range!.Ranges.Single().From;
+                if (from == 0) { await Task.Delay(Timeout.Infinite, ct); }
+                if (from >= 65536) { pause.Cancel(); ct.ThrowIfCancellationRequested(); }
+                await Task.Delay(2, ct); return Range(request);
+            })))
+            {
+                try { await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, pause.Token); throw new Exception("No se pausó."); } catch (OperationCanceledException) { }
+            }
+            var directory = VerifiedDownloader.ChunkDirectory(asset, destination, options.ChunkBytes);
+            var saved = Directory.GetFiles(directory, "*.bin").Select(path => long.Parse(Path.GetFileName(path).Split('-')[0])).ToHashSet();
+            assert(saved.Count > 0, "Se perdieron los fragmentos adelantados al pausar.");
+            using var resumed = new HttpClient(new AsyncHandler((request, _) => {
+                assert(!saved.Contains(request.Headers.Range!.Ranges.Single().From!.Value), "Se repitió un fragmento ya guardado."); return Task.FromResult(Range(request));
+            }));
+            await new VerifiedDownloader(resumed, options).DownloadAsync(asset, destination, null, default);
+            assert((await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "Reanudación fuera de orden corrupta.");
+        });
+        await test("Fragmento incompleto: reanudar desde su byte guardado", async () =>
+        {
+            var destination = Path.Combine(root, "chunk-resume.bin"); var directory = VerifiedDownloader.ChunkDirectory(asset, destination, options.ChunkBytes);
+            Directory.CreateDirectory(directory); await File.WriteAllBytesAsync(Path.Combine(directory, "0-8191.bin.part"), bytes[..2000]);
+            var resumed = false;
+            using var client = new HttpClient(new AsyncHandler((request, _) => {
+                var range = request.Headers.Range!.Ranges.Single(); if (range.To == 8191) { assert(range.From == 2000, "Se perdió el progreso dentro del fragmento."); resumed = true; }
+                return Task.FromResult(Range(request));
+            }));
+            await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, default);
+            assert(resumed && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "No se reanudó el fragmento parcial.");
+        });
         await test("Paralelo: reanudar parcial creado por versión anterior", async () =>
         {
             var destination = Path.Combine(root, "old-part.bin"); await File.WriteAllBytesAsync(destination + ".part", bytes[..9011]); var minimum = long.MaxValue;
@@ -53,8 +99,11 @@ static class DownloadTests
             {
                 try { await new VerifiedDownloader(client, options).DownloadAsync(asset, destination, null, pause.Token); throw new Exception("No se pausó."); } catch (OperationCanceledException) { }
             }
-            assert(new FileInfo(destination + ".part").Length == 32768 && !File.Exists(destination), "La pausa perdió el progreso o activó un modelo incompleto.");
-            using var resumed = new HttpClient(new AsyncHandler((request, _) => { assert(request.Headers.Range!.Ranges.Single().From >= 32768, "Se repitió un bloque guardado."); return Task.FromResult(Range(request)); }));
+            var prefix = File.Exists(destination + ".part") ? new FileInfo(destination + ".part").Length : 0;
+            var chunkDirectory = VerifiedDownloader.ChunkDirectory(asset, destination, options.ChunkBytes);
+            var persisted = prefix + Directory.GetFiles(chunkDirectory).Sum(path => new FileInfo(path).Length);
+            assert(persisted > 0 && !File.Exists(destination), "La pausa perdió el progreso o activó un modelo incompleto.");
+            using var resumed = new HttpClient(new AsyncHandler((request, _) => { assert(request.Headers.Range!.Ranges.Single().From >= prefix, "Se repitió el prefijo guardado."); return Task.FromResult(Range(request)); }));
             await new VerifiedDownloader(resumed, options).DownloadAsync(asset, destination, null, default);
             assert((await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "Reanudación corrupta.");
         });

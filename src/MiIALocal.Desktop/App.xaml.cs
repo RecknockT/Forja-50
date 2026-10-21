@@ -19,6 +19,17 @@ public partial class App : Application
         var identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(data.Root))).Substring(0, 20);
         instance = new Mutex(true, "Local\\MiIALocal-" + identity, out var first);
         if (!first) { MessageBox.Show("Forja 50 ya está abierta. Buscá su ventana en la barra de tareas.", "Forja 50"); Shutdown(); return; }
+        if (Arguments.Contains("--configure-native"))
+        {
+            var settings = data.LoadSettings();
+            if (File.Exists(data.SettingsFile)) File.Copy(data.SettingsFile, data.SettingsFile + ".before-native-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".json", true);
+            settings.EngineMode = EngineMode.NInfer5080; settings.ContextTokens = 65536;
+            settings.NinferEnginePath = "";
+            settings.NinferVision = false; settings.NativeTuning = new(); settings.LicenseAccepted = false;
+            data.SaveSettings(settings);
+            if (Argument("--configuration-result") is { } report) AppPaths.AtomicWrite(report, "{\"configured\":true,\"engine\":\"NInfer5080\",\"context\":65536,\"vision\":false,\"gpuStarted\":false}");
+            Shutdown(); return;
+        }
         DispatcherUnhandledException += (_, error) =>
         {
             File.AppendAllText(Path.Combine(data.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error.Exception + Environment.NewLine);

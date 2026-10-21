@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "status": "development-candidate-gpu-tests-pending",
+  "platform": "windows11-x64-native",
+  "sourceRepository": "YukinoKaorisuna/ninfer-5070ti",
+  "sourceCommit": "aee91065f4d3635a07d681800f87829e18f0e227",
+  "model": "qwen3_8_27b.ninfer",
+  "modelSha256": "c4a7e9ab593a7f42d58208fa0065d67a82d61921107686cc9f6ed1ec6b050e21",
+  "contextTokens": 65536,
+  "kvCapacity": 65536,
+  "kvDtype": "q4",
+  "mtpDraftTokens": 3,
+  "embeddingHost": true,
+  "vision": false,
+  "cudaGraph": true,
+  "maxConcurrency": 1,
+  "thinkingTokens": 2048,
+  "maxOutput": 8192,
+  "profiles": [
+    {
+      "gpu": "NVIDIA GeForce RTX 5080",
+      "prefillChunk": 896,
+      "gpuValidation": "pending"
+    },
+    {
+      "gpu": "NVIDIA GeForce RTX 5070 Ti",
+      "prefillChunk": 512,
+      "gpuValidation": "pending"
+    }
+  ],
+  "download": {
+    "connections": 16,
+    "chunkMiB": 64,
+    "bandwidthLimitMBps": null,
+    "persistOutOfOrder": true
+  }
+}

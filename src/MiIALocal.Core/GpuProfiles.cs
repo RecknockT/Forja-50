@@ -29,7 +29,7 @@ public static class GpuProfiles
     public static GpuPreset Apply(AppSettings settings, GpuInfo gpu)
     {
         var preset = For(gpu);
-        if (settings.UseRecommendedProfile) { settings.ContextTokens = preset.ContextTokens; settings.Tuning = preset.CreateTuning(); }
+        if (settings.UseRecommendedProfile && settings.EngineMode == EngineMode.KvMem) { settings.ContextTokens = preset.ContextTokens; settings.Tuning = preset.CreateTuning(); }
         settings.HardwareProfileId = preset.Id;
         return preset;
     }

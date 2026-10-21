@@ -87,11 +87,11 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti y RTX 5080 de escritorio de 16 GB, con 32 GB de RAM.
 
-            Incluye Setup y ZIP portable, tema oscuro, contexto predeterminado de 64K, perfiles por GPU, configuracion avanzada y actualizador desde GitHub con verificacion SHA-256. El modelo de unos 12,8 GB se descarga desde el programa; no se incluye en estos archivos.
+            Incluye Setup y ZIP portable, tema oscuro, configuracion avanzada, perfiles automaticos para cada placa y actualizador. Motor NInfer nativo Windows basado en el fork de Todd Ballinger; modelo oficial Qwen3.8-27B de 16,5 GB descargado desde el programa. No incluye pesos en el instalador.
 
-            Incluye logo e icono propios, descargas paralelas con reintentos ante conexiones trabadas, pausa y reanudacion, velocidad y tiempo estimado. Conserva los parciales de las versiones anteriores. Corrige el error al cerrar por primera vez con la X. La compilacion comprueba el cierre inicial, solicitudes repetidas y cancelacion de operaciones al cerrar.
+            Descarga continua a maxima velocidad disponible: 16 conexiones, fragmentos persistentes, pausa y reanudacion, reintentos, velocidad reciente y tiempo estimado. Contexto inicial 64K; prefill 896 en 5080 y 512 en 5070 Ti. La compilacion comprueba el cierre inicial, solicitudes repetidas y cancelacion de operaciones al cerrar.
 
-            Pruebas basicas realizadas en RTX 5080. Pendientes: Windows limpio, uso prolongado y validacion fisica en RTX 5070 Ti. Los paquetes todavia no tienen firma de editor. Revisar las licencias del modelo y los componentes antes de usarlos.
+            La prueba de inferencia del nuevo motor nativo queda pendiente en ambas placas. Las pruebas historicas de la 5080 corresponden a KVMem. Pendientes tambien Windows limpio y uso prolongado. Los paquetes todavia no tienen firma de editor. Revisar las licencias del modelo y los componentes antes de usarlos.
         run: |
           python3 - <<'PY'
           import hashlib, json, os, pathlib

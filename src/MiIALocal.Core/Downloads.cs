@@ -15,7 +15,7 @@ public sealed record PreparationProgress(string Stage, long Done = 0, long? Tota
         : "Preparando y verificando archivos...";
 }
 
-public sealed record DownloadOptions(int Connections = 4, int ChunkBytes = 8 * 1024 * 1024, long ParallelThreshold = 64 * 1024 * 1024, int Retries = 3, TimeSpan? StallTimeout = null, TimeSpan? RetryDelay = null);
+public sealed record DownloadOptions(int Connections = 16, int ChunkBytes = 64 * 1024 * 1024, long ParallelThreshold = 64 * 1024 * 1024, int Retries = 3, TimeSpan? StallTimeout = null, TimeSpan? RetryDelay = null);
 
 public sealed class VerifiedDownloader(HttpClient client, DownloadOptions? options = null)
 {
@@ -107,70 +107,132 @@ public sealed class VerifiedDownloader(HttpClient client, DownloadOptions? optio
             meter.Report(done, total, 0, true);
         }
     }
+    public static string ChunkDirectory(DownloadAsset asset, string destination, int chunkBytes = 64 * 1024 * 1024) => destination + ".chunks-" + asset.Sha256[..12] + "-" + chunkBytes;
+    public static bool HasPartial(DownloadAsset asset, string destination) => !File.Exists(destination) && (File.Exists(destination + ".part") || Directory.Exists(ChunkDirectory(asset, destination)) && Directory.EnumerateFiles(ChunkDirectory(asset, destination), "*.bin*").Any());
+    public static long PersistedBytes(DownloadAsset asset, string destination)
+    {
+        var total = asset.Bytes ?? long.MaxValue;
+        if (File.Exists(destination) && new FileInfo(destination).Length == total) return total;
+        var prefix = File.Exists(destination + ".part") ? Math.Min(total, new FileInfo(destination + ".part").Length) : 0;
+        var directory = ChunkDirectory(asset, destination);
+        if (!Directory.Exists(directory)) return prefix;
+        var chunks = new Dictionary<long, long>();
+        foreach (var file in Directory.EnumerateFiles(directory))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(Path.GetFileName(file), @"^(\d+)-(\d+)\.bin(?:\.part)?$");
+            if (!match.Success || !long.TryParse(match.Groups[1].Value, out var start) || !long.TryParse(match.Groups[2].Value, out var end) || start < prefix || end < start || end >= total) continue;
+            var length = Math.Min(new FileInfo(file).Length, end - start + 1);
+            chunks[start] = Math.Max(chunks.GetValueOrDefault(start), length);
+        }
+        return Math.Min(total, prefix + chunks.Values.Sum());
+    }
     private async Task ParallelAsync(DownloadAsset asset, string partial, long offset, IProgress<PreparationProgress>? progress, CancellationToken ct)
     {
-        if (options.Connections is < 1 or > 8 || options.ChunkBytes is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(options));
+        if (options.Connections is < 1 or > 32 || options.ChunkBytes is < 1 or > 128 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(options));
         var total = asset.Bytes!.Value;
-        var meter = new TransferMeter(asset.Name + $" · {options.Connections} conexiones", progress);
-        // Only contiguous, completed batches reach .part. Existing serial partials remain compatible.
-        while (offset < total)
+        var directory = ChunkDirectory(asset, partial[..^5], options.ChunkBytes);
+        Directory.CreateDirectory(directory);
+        var firstIndex = offset / options.ChunkBytes;
+        var chunks = Enumerable.Range(0, checked((int)((total - 1) / options.ChunkBytes - firstIndex + 1)))
+            .Select(index => (Start: Math.Max(offset, (firstIndex + index) * options.ChunkBytes), End: Math.Min(total - 1, (firstIndex + index + 1) * options.ChunkBytes - 1)))
+            .Select(range => new Chunk(range.Start, range.End, Path.Combine(directory, $"{range.Start}-{range.End}.bin"))).ToArray();
+        long done = offset;
+        foreach (var chunk in chunks)
         {
-            ct.ThrowIfCancellationRequested();
-            using var batch = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var counts = new long[options.Connections]; var gate = new object();
-            var starts = Enumerable.Range(0, options.Connections).Select(i => offset + (long)i * options.ChunkBytes).Where(start => start < total).ToArray();
-            var tasks = starts.Select((start, index) => FetchAsync(start, Math.Min(start + options.ChunkBytes - 1, total - 1), index)).ToArray();
-            async Task<byte[]> FetchAsync(long start, long end, int index)
+            foreach (var path in new[] { chunk.Path, chunk.Path + ".part" })
+            {
+                if (!File.Exists(path)) continue;
+                var size = new FileInfo(path).Length;
+                if (size > chunk.Length || path == chunk.Path && size != chunk.Length)
+                    File.Move(path, path + ".invalid-" + Guid.NewGuid().ToString("N"));
+            }
+            done += File.Exists(chunk.Path) ? chunk.Length : File.Exists(chunk.Path + ".part") ? new FileInfo(chunk.Path + ".part").Length : 0;
+        }
+        var meter = new TransferMeter(asset.Name + $" · hasta {options.Connections} conexiones", progress);
+        meter.Report(done, total, 0, true);
+        using var workers = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var appendGate = new SemaphoreSlim(1, 1);
+        var next = -1; var toAppend = 0;
+        async Task AppendReadyAsync()
+        {
+            await appendGate.WaitAsync(workers.Token);
+            try
+            {
+                while (toAppend < chunks.Length && File.Exists(chunks[toAppend].Path))
+                {
+                    workers.Token.ThrowIfCancellationRequested();
+                    var chunk = chunks[toAppend];
+                    // Finish this small local copy before pausing. A committed prefix has no holes.
+                    await using (var output = new FileStream(partial, FileMode.Append, FileAccess.Write, FileShare.Read, 128 * 1024, true))
+                    await using (var input = File.OpenRead(chunk.Path))
+                    { await input.CopyToAsync(output, CancellationToken.None); await output.FlushAsync(CancellationToken.None); }
+                    File.Delete(chunk.Path); toAppend++;
+                }
+            }
+            finally { appendGate.Release(); }
+        }
+        async Task FetchAsync(Chunk chunk)
+        {
+            if (File.Exists(chunk.Path)) return;
+            var staging = chunk.Path + ".part";
+            for (var attempt = 0; ; attempt++)
             {
                 try
                 {
-                    for (var attempt = 0; ; attempt++)
+                    var received = File.Exists(staging) ? new FileInfo(staging).Length : 0;
+                    if (received == chunk.Length) { File.Move(staging, chunk.Path); return; }
+                    using var request = new HttpRequestMessage(HttpMethod.Get, asset.Url);
+                    request.Headers.Range = new(chunk.Start + received, chunk.End);
+                    using var response = await SendAsync(request, workers.Token);
+                    if (response.StatusCode is HttpStatusCode.OK or HttpStatusCode.RequestedRangeNotSatisfiable) throw new RangesUnsupportedException();
+                    response.EnsureSuccessStatusCode();
+                    var range = response.Content.Headers.ContentRange;
+                    if (response.StatusCode != HttpStatusCode.PartialContent || range?.From != chunk.Start + received || range.To != chunk.End || range.Length != total)
+                        throw new InvalidDataException("El servidor devolvió un fragmento incorrecto. Se conservó el progreso anterior.");
+                    await using (var source = await response.Content.ReadAsStreamAsync(workers.Token))
+                    await using (var output = new FileStream(staging, FileMode.Append, FileAccess.Write, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
                     {
-                        try
+                        var buffer = new byte[1024 * 1024];
+                        while (received < chunk.Length)
                         {
-                            lock (gate) counts[index] = 0;
-                            using var request = new HttpRequestMessage(HttpMethod.Get, asset.Url);
-                            request.Headers.Range = new(start, end);
-                            using var response = await SendAsync(request, batch.Token);
-                            if (response.StatusCode is HttpStatusCode.OK or HttpStatusCode.RequestedRangeNotSatisfiable) throw new RangesUnsupportedException();
-                            response.EnsureSuccessStatusCode();
-                            var range = response.Content.Headers.ContentRange;
-                            if (response.StatusCode != HttpStatusCode.PartialContent || range?.From != start || range.To != end || range.Length != total)
-                                throw new InvalidDataException("El servidor devolvió un fragmento incorrecto. Se conservó el progreso anterior.");
-                            var data = new byte[checked((int)(end - start + 1))]; var filled = 0;
-                            await using var source = await response.Content.ReadAsStreamAsync(batch.Token);
-                            while (filled < data.Length)
-                            {
-                                var read = await ReadAsync(source, data.AsMemory(filled), batch.Token);
-                                if (read == 0) throw new IOException("El fragmento llegó incompleto.");
-                                filled += read;
-                                lock (gate) { counts[index] = filled; meter.Report(offset + counts.Sum(), total, read); }
-                            }
-                            return data;
+                            var read = await ReadAsync(source, buffer.AsMemory(0, (int)Math.Min(buffer.Length, chunk.Length - received)), workers.Token);
+                            if (read == 0) throw new IOException("El fragmento llegó incompleto.");
+                            await output.WriteAsync(buffer.AsMemory(0, read), workers.Token); received += read;
+                            meter.Report(Interlocked.Add(ref done, read), total, read);
                         }
-                        catch (Exception ex) when (CanRetry(ex, batch.Token) && attempt < options.Retries)
-                        { await RetryAsync(asset.Name, attempt, progress, batch.Token); }
-                        catch (OperationCanceledException ex) when (!batch.IsCancellationRequested)
-                        { throw new HttpRequestException("Una conexión sigue sin responder después de los reintentos. El progreso se conservó; podés reanudar.", ex); }
+                        await output.FlushAsync(workers.Token);
                     }
+                    File.Move(staging, chunk.Path); return;
                 }
-                catch { batch.Cancel(); throw; }
+                catch (Exception ex) when (CanRetry(ex, workers.Token) && attempt < options.Retries)
+                { await RetryAsync(asset.Name, attempt, progress, workers.Token); }
+                catch (OperationCanceledException ex) when (!workers.IsCancellationRequested)
+                { throw new HttpRequestException("Una conexión sigue sin responder después de los reintentos. El progreso se conservó; podés reanudar.", ex); }
             }
-            byte[][] buffers;
-            try { buffers = await Task.WhenAll(tasks); }
-            catch
-            {
-                // Observe all workers before fallback; never leave requests running in the background.
-                if (!ct.IsCancellationRequested && tasks.Any(t => t.Exception?.InnerExceptions.Any(e => e is RangesUnsupportedException) == true)) throw new RangesUnsupportedException();
-                var error = tasks.Where(t => t.IsFaulted).SelectMany(t => t.Exception!.InnerExceptions).FirstOrDefault();
-                if (error is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
-                throw;
-            }
-            await using var output = new FileStream(partial, FileMode.Append, FileAccess.Write, FileShare.Read, 1024 * 1024, true);
-            foreach (var data in buffers) { await output.WriteAsync(data, ct); offset += data.Length; }
-            await output.FlushAsync(ct); meter.Report(offset, total, 0, true);
         }
+        async Task WorkerAsync()
+        {
+            try
+            {
+                while (Interlocked.Increment(ref next) is var index && index < chunks.Length)
+                { workers.Token.ThrowIfCancellationRequested(); await FetchAsync(chunks[index]); await AppendReadyAsync(); }
+            }
+            catch { workers.Cancel(); throw; }
+        }
+        var tasks = Enumerable.Range(0, options.Connections).Select(_ => WorkerAsync()).ToArray();
+        try { await Task.WhenAll(tasks); }
+        catch
+        {
+            if (!ct.IsCancellationRequested && tasks.Any(t => t.Exception?.InnerExceptions.Any(e => e is RangesUnsupportedException) == true)) throw new RangesUnsupportedException();
+            var error = tasks.Where(t => t.IsFaulted).SelectMany(t => t.Exception!.InnerExceptions).FirstOrDefault();
+            if (error is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+            throw;
+        }
+        if (toAppend != chunks.Length || new FileInfo(partial).Length != total) throw new IOException("La descarga aún tiene fragmentos pendientes; podés reanudar.");
+        meter.Report(total, total, 0, true);
+        if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
     }
+    private sealed record Chunk(long Start, long End, string Path) { public long Length => End - Start + 1; }
     private TimeSpan StallTimeout => options.StallTimeout ?? TimeSpan.FromSeconds(30);
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
@@ -198,13 +260,24 @@ public sealed class VerifiedDownloader(HttpClient client, DownloadOptions? optio
     private sealed class TransferMeter(string name, IProgress<PreparationProgress>? progress)
     {
         private readonly Stopwatch clock = Stopwatch.StartNew();
-        private long received, lastReport;
+        private readonly object gate = new();
+        private readonly Queue<(long Time, int Bytes)> samples = new();
+        private long firstByte = -1, lastReport, lastDone;
         public void Report(long done, long? total, int count, bool force = false)
         {
-            received += count;
-            if (!force && clock.ElapsedMilliseconds - lastReport < 300) return;
-            lastReport = clock.ElapsedMilliseconds;
-            progress?.Report(new(name, done, total, received / Math.Max(clock.Elapsed.TotalSeconds, .001)));
+            lock (gate)
+            {
+            var now = clock.ElapsedMilliseconds;
+            done = lastDone = Math.Max(lastDone, done);
+            if (count > 0) { if (firstByte < 0) firstByte = now; samples.Enqueue((now, count)); }
+            while (samples.TryPeek(out var sample) && sample.Time < now - 2000) samples.Dequeue();
+            if (!force && now - lastReport < 200) return;
+            lastReport = now;
+            // Recent transfer rate excludes DNS/TLS startup and does not average an earlier stall
+            // into the rest of a multi-gigabyte download.
+            var seconds = Math.Max((now - Math.Max(firstByte, now - 2000)) / 1000d, .1);
+            progress?.Report(new(name, done, total, samples.Sum(sample => (long)sample.Bytes) / seconds));
+            }
         }
     }
 }
@@ -237,16 +310,20 @@ public static class SafeArchive
 
 public sealed class Provisioner(AppPaths paths, VerifiedDownloader downloader)
 {
-    public bool IsPrepared(AppSettings settings) => File.Exists(paths.EngineExe) && File.Exists(paths.AgentExe) && File.Exists(paths.GitExe) && File.Exists(paths.NodeExe) && File.Exists(paths.ModelPath(settings));
+    public bool IsPrepared(AppSettings settings) => File.Exists(paths.AgentExe) && File.Exists(paths.GitExe) && File.Exists(paths.NodeExe) && File.Exists(paths.ActiveModelPath(settings))
+        && (settings.EngineMode == EngineMode.NInfer5080 ? paths.HasNinferEngine(settings) : File.Exists(paths.EngineExe));
     public async Task PrepareAsync(AppSettings settings, IProgress<PreparationProgress>? progress, CancellationToken ct)
     {
         if (!settings.LicenseAccepted) throw new InvalidOperationException("Revisá las licencias y confirmá su aceptación antes de descargar.");
-        foreach (var asset in ReleaseProfile.Components)
+        if (settings.EngineMode == EngineMode.NInfer5080 && !string.IsNullOrWhiteSpace(settings.NinferEnginePath) && !paths.HasNinferEngine(settings)) throw new InvalidOperationException("No se encuentra el motor importado. Elegí un archivo válido o restaurá el motor automático.");
+        foreach (var asset in ReleaseProfile.ComponentsFor(settings.EngineMode))
         {
+            if (asset == ReleaseProfile.NativeEngine && !string.IsNullOrWhiteSpace(settings.NinferEnginePath)) continue;
             var archive = Path.Combine(paths.Downloads, asset.FileName);
             await downloader.DownloadAsync(asset, archive, progress, ct);
             var target = Path.Combine(paths.Runtime, asset.Id);
-            var marker = Path.Combine(target, ".installed.json");
+            var markerName = ".installed-" + asset.Sha256[..16] + ".json";
+            var marker = Path.Combine(target, markerName);
             if (File.Exists(marker) && await ValidateInstalledAsync(target, marker, ct)) continue;
             progress?.Report(new($"Preparando {asset.Name}"));
             var staging = Path.Combine(paths.Runtime, asset.Id + ".stage-" + Guid.NewGuid().ToString("N"));
@@ -257,16 +334,17 @@ public sealed class Provisioner(AppPaths paths, VerifiedDownloader downloader)
                 ct.ThrowIfCancellationRequested(); await using var input = File.OpenRead(file);
                 hashes[Path.GetRelativePath(staging, file)] = Convert.ToHexStringLower(await SHA256.HashDataAsync(input, ct));
             }
-            AppPaths.AtomicWrite(Path.Combine(staging, ".installed.json"), System.Text.Json.JsonSerializer.Serialize(hashes));
+            AppPaths.AtomicWrite(Path.Combine(staging, markerName), System.Text.Json.JsonSerializer.Serialize(hashes));
             if (Directory.Exists(target)) Directory.Move(target, target + ".previous-" + Guid.NewGuid().ToString("N"));
             Directory.Move(staging, target);
         }
         progress?.Report(new("Comprobando el modelo"));
-        if (!string.IsNullOrWhiteSpace(settings.ImportedModel))
+        var modelAsset = ReleaseProfile.ModelFor(settings.EngineMode);
+        if (!string.IsNullOrWhiteSpace(paths.ImportedModelPath(settings)))
         {
-            if (!await VerifiedDownloader.MatchesAsync(settings.ImportedModel, ReleaseProfile.Model, ct)) throw new InvalidDataException("El archivo elegido no es el modelo de esta versión o está incompleto.");
+            if (!await VerifiedDownloader.MatchesAsync(paths.ActiveModelPath(settings), modelAsset, ct)) throw new InvalidDataException("El archivo elegido no es el modelo de esta versión o está incompleto.");
         }
-        else await downloader.DownloadAsync(ReleaseProfile.Model, paths.ModelPath(settings), progress, ct);
+        else await downloader.DownloadAsync(modelAsset, paths.ActiveModelPath(settings), progress, ct);
         paths.SaveSettings(settings);
     }
     private static async Task<bool> ValidateInstalledAsync(string root, string marker, CancellationToken ct)

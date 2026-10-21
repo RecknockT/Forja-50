@@ -36,6 +36,50 @@ if (args.Contains("--download-probe"))
     }));
     return 0;
 }
+if (args.Contains("--download-speed-probe"))
+{
+    foreach (var connections in new[] { 1, 4, 8, 16 })
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await Task.WhenAll(Enumerable.Range(0, connections).Select(async index => {
+            var start = index * 1048576L;
+            using var request = new HttpRequestMessage(HttpMethod.Get, ReleaseProfile.NinferModel.Url);
+            request.Headers.Range = new(start, start + 1048575);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            if (response.StatusCode != HttpStatusCode.PartialContent || response.Content.Headers.ContentRange?.From != start || response.Content.Headers.ContentRange?.To != start + 1048575)
+                throw new Exception("El servidor no respetó el fragmento; no se leerá el cuerpo.");
+            using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            await using var body = await response.Content.ReadAsStreamAsync(ct.Token);
+            await body.ReadExactlyAsync(new byte[1048576], ct.Token);
+        }));
+        Console.WriteLine($"PROBE {connections} conexiones: {connections * 1048576 / clock.Elapsed.TotalSeconds / 1e6:0.00} MB/s · muestra acotada de {connections} MiB, no benchmark del archivo completo");
+    }
+    return 0;
+}
+if (args.Contains("--download-throughput-probe"))
+{
+    const long total = 64L * 1024 * 1024;
+    foreach (var connections in new[] { 1, 16 })
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await Task.WhenAll(Enumerable.Range(0, connections).Select(async index => {
+            var size = total / connections; var start = index * size;
+            using var request = new HttpRequestMessage(HttpMethod.Get, ReleaseProfile.NinferModel.Url);
+            request.Headers.Range = new(start, start + size - 1);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            if (response.StatusCode != HttpStatusCode.PartialContent || response.Content.Headers.ContentRange?.From != start || response.Content.Headers.ContentRange?.To != start + size - 1)
+                throw new Exception("El servidor no respetó el fragmento; no se leerá el cuerpo.");
+            using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            await using var body = await response.Content.ReadAsStreamAsync(ct.Token);
+            var buffer = new byte[1048576]; long read = 0;
+            while (read < size) { var count = await body.ReadAsync(buffer.AsMemory(0,(int)Math.Min(buffer.Length,size-read)),ct.Token); if(count == 0) throw new IOException("Fragmento incompleto."); read += count; }
+        }));
+        Console.WriteLine($"THROUGHPUT {connections} conexiones: {total / clock.Elapsed.TotalSeconds / 1e6:0.00} MB/s · mismos 64 MiB, {clock.Elapsed.TotalSeconds:0.00}s, sin guardar pesos ni iniciar GPU");
+    }
+    return 0;
+}
 var failures = 0;
 var root = Path.Combine(Path.GetTempPath(), "MiIALocal-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
@@ -151,7 +195,7 @@ await Test("Ajustes inválidos: recuperar inicio y conservar la copia anterior",
 });
 await Test("Almacenamiento: verificar unidad del programa y unidad del modelo", () =>
 {
-    var paths = new AppPaths(Path.Combine(root, "storage")); var settings = new AppSettings { ModelDirectory = "Z:\\models" };
+    var paths = new AppPaths(Path.Combine(root, "storage")); var settings = new AppSettings { EngineMode = EngineMode.KvMem, ModelDirectory = "Z:\\models" };
     var requirements = PreparationStorage.Requirements(paths, settings);
     Assert(requirements.Count == 2 && requirements[Path.GetPathRoot(paths.Root)!] == 4_000_000_000 && requirements["Z:\\"] == 30_000_000_000, "Se olvidó la unidad del programa.");
     settings.ImportedModel = "Z:\\model.ninfer";
@@ -268,6 +312,98 @@ if (OperatingSystem.IsWindows())
         Assert((await File.ReadAllTextAsync(Path.Combine(root, "early.out.log"))).Contains("Revisión correcta"), "Se dañaron los caracteres.");
     });
 }
+await Test("NInfer-5080: artefacto oficial fijado y componentes por modo", () =>
+{
+    var asset = ReleaseProfile.NinferModel;
+    Assert(asset.Url.Contains("huggingface.co/ninfer-5080/Qwen3.8-27B-RTX5080/resolve/e23a3301eed611ac3196e3389c3d572bc5ddeb9a/") && asset.Sha256 == "c4a7e9ab593a7f42d58208fa0065d67a82d61921107686cc9f6ed1ec6b050e21" && asset.Bytes == 16461267456, "El artefacto no está fijado a la revisión validada.");
+    Assert(ReleaseProfile.ModelFor(EngineMode.NInfer5080) == asset && ReleaseProfile.ModelFor(EngineMode.KvMem) == ReleaseProfile.Model, "El modo no selecciona su modelo.");
+    Assert(ReleaseProfile.ComponentsFor(EngineMode.NInfer5080).Length == 4 && ReleaseProfile.ComponentsFor(EngineMode.NInfer5080).Contains(ReleaseProfile.NativeEngine) && !ReleaseProfile.ComponentsFor(EngineMode.NInfer5080).Contains(ReleaseProfile.Engine) && ReleaseProfile.ComponentsFor(EngineMode.KvMem).Length == 4, "El modo nativo debe descargar su propio motor.");
+    return Task.CompletedTask;
+});
+await Test("NInfer-5080: argumentos del perfil nativo Windows", async () =>
+{
+    var arguments = RuntimeSupervisor.Ninfer5080Arguments("qwen3_8_27b.ninfer", 18080, "clave", 131072, true);
+    string Value(string flag) => arguments[Array.IndexOf(arguments, flag) + 1];
+    Assert(arguments[0] == "qwen3_8_27b.ninfer" && Value("--host") == "127.0.0.1" && Value("--port") == "18080", "Falta el destino local del motor.");
+    Assert(Value("--api-key") == "clave" && Value("--model-id") == "qwen-local", "El motor no usa la clave efímera o el identificador esperado.");
+    Assert(Value("--max-context") == "131072" && Value("--kv-capacity") == "131072" && Value("--kv-dtype") == "q4", "El contexto o el KV no reproducen el perfil.");
+    Assert(Value("--spec") == "mtp" && Value("--draft-tokens") == "3" && Value("--prefill-chunk") == "896", "Falta MTP-3 o el prefill del perfil.");
+    Assert(arguments.Contains("--embedding-host") && arguments.Contains("--vision") && Value("--vision-max-tokens") == "2048", "Faltan los embebidos en host o la visión.");
+    Assert(Value("--prefix-checkpoint-policy") == "rolling-tool" && Value("--max-pending-requests") == "16" && Value("--max-concurrency") == "1", "Faltan el reuso de prefijos o los límites de cola.");
+    Assert(!RuntimeSupervisor.Ninfer5080Arguments("m.ninfer", 1, "k", 65536, false).Contains("--vision"), "La visión se activó cuando se pidió desactivarla.");
+    await Throws<InvalidDataException>(() => { RuntimeSupervisor.Ninfer5080Arguments("m.ninfer", 1, "k", 32768); return Task.CompletedTask; });
+});
+await Test("NInfer-5080: modelo y motor siguen la carpeta de datos", () =>
+{
+    var paths = new AppPaths(Path.Combine(root, "ninfer-paths"));
+    var settings = new AppSettings { EngineMode = EngineMode.NInfer5080 };
+    Assert(Path.GetFileName(paths.NinferModelPath(settings)) == ReleaseProfile.NinferModel.FileName && paths.ActiveModelPath(settings) == paths.NinferModelPath(settings), "El modo NInfer-5080 no usa su propio artefacto.");
+    settings.ImportedNinferModel = Path.Combine(root, "otro", "qwen3_8_27b.ninfer");
+    Assert(paths.ActiveModelPath(settings) == Path.GetFullPath(settings.ImportedNinferModel, paths.Root), "No se respetó el artefacto importado.");
+    Assert(paths.ModelPath(new AppSettings()) == Path.Combine(paths.ModelDirectoryPath(new AppSettings()), ReleaseProfile.Model.FileName) && !paths.HasNinferEngine(new AppSettings()), "El modo Forja dejó de usar su modelo o declaró un motor importado.");
+    return Task.CompletedTask;
+});
+await Test("NInfer-5080: motor automático e importación opcional", async () =>
+{
+    var paths = new AppPaths(Path.Combine(root, "ninfer-prep"));
+    var settings = new AppSettings { EngineMode = EngineMode.NInfer5080 };
+    using var client = new HttpClient(new Handler(_ => new(HttpStatusCode.OK)));
+    var provisioner = new Provisioner(paths, new VerifiedDownloader(client));
+    Assert(!provisioner.IsPrepared(settings), "Se declaró preparado sin motor ni modelo.");
+    foreach (var file in new[] { paths.AgentExe, paths.GitExe, paths.NodeExe, paths.NinferModelPath(settings) }) { Directory.CreateDirectory(Path.GetDirectoryName(file)!); await File.WriteAllTextAsync(file, "x"); }
+    Assert(!provisioner.IsPrepared(settings), "Se declaró preparado sin el motor ninfer-serve.");
+    var managedEngine = paths.NinferEngineExe(settings);
+    Directory.CreateDirectory(Path.GetDirectoryName(managedEngine)!); await File.WriteAllTextAsync(managedEngine, "x");
+    Assert(provisioner.IsPrepared(settings) && managedEngine == Path.Combine(paths.Runtime, "ninfer5080", "ninfer-serve.exe"), "No se reconoció el motor administrado.");
+    var engine = Path.Combine(paths.Root, "ninfer-serve.exe"); await File.WriteAllTextAsync(engine, "x"); settings.NinferEnginePath = engine;
+    Assert(provisioner.IsPrepared(settings), "No se reconoció el motor importado con el artefacto presente.");
+    await Throws<InvalidOperationException>(() => provisioner.PrepareAsync(new AppSettings { EngineMode = EngineMode.NInfer5080, LicenseAccepted = true, NinferEnginePath = Path.Combine(paths.Root, "missing.exe") }, null, default));
+});
+await Test("NInfer-5080: agente 128K y aviso en la 5070 Ti", () =>
+{
+    using var json = System.Text.Json.JsonDocument.Parse(AgentConfiguration.Build(12345, "key", "instructions.md", 131072, null, "Qwen3.8-27B · NInfer-5080"));
+    var model = json.RootElement.GetProperty("provider").GetProperty("local").GetProperty("models").GetProperty("qwen-local");
+    Assert(model.GetProperty("limit").GetProperty("context").GetInt32() == 131072 && model.GetProperty("name").GetString()!.Contains("NInfer-5080"), "El agente no refleja el contexto o el nombre del modo.");
+    Assert(Ninfer5080Profile.WarningFor("NVIDIA GeForce RTX 5070 Ti", 131072) is not null && Ninfer5080Profile.WarningFor("NVIDIA GeForce RTX 5080", 131072) is not null && Ninfer5080Profile.WarningFor("NVIDIA GeForce RTX 5070 Ti", 65536) is null, "El aviso del 128K en la 5070 Ti es incorrecto.");
+    Assert(Ninfer5080Profile.Contexts is [65536, 131072], "Los contextos admitidos del modo cambiaron.");
+    return Task.CompletedTask;
+});
+await Test("NInfer-5080: conservar 128K y normalizar contexto no admitido", () =>
+{
+    var paths = new AppPaths(Path.Combine(root, "ninfer-settings"));
+    paths.SaveSettings(new AppSettings { EngineMode = EngineMode.NInfer5080, ContextTokens = 131072 });
+    var loaded = paths.LoadSettings();
+    Assert(loaded.EngineMode == EngineMode.NInfer5080 && loaded.ContextTokens == 131072 && paths.SettingsRecoveryMessage is null, "Se descartó un 128K válido del modo NInfer-5080.");
+    File.WriteAllText(paths.SettingsFile, "{\"EngineMode\":1,\"ContextTokens\":90000}");
+    var normalized = paths.LoadSettings();
+    Assert(normalized.EngineMode == EngineMode.NInfer5080 && normalized.ContextTokens == 65536, "No se normalizó un contexto no admitido del modo NInfer-5080.");
+    return Task.CompletedTask;
+});
+await Test("Nativo: detectar GPU, diferenciar perfiles y conservar ajustes manuales", async () =>
+{
+    var gpu5080 = new GpuInfo(2, "NVIDIA GeForce RTX 5080", 16303, 15000, "617.14");
+    var gpu5070 = new GpuInfo(1, "NVIDIA GeForce RTX 5070 Ti", 16303, 15000, "617.14");
+    var a = Ninfer5080Profile.For(gpu5080); var b = Ninfer5080Profile.For(gpu5070);
+    Assert(a.Id != b.Id && a.PrefillChunk == 896 && b.PrefillChunk == 512, "No se diferenciaron las placas.");
+    var tuning = new NativeEngineTuning { PrefillChunk = 256, ThinkingTokens = 0, CudaGraph = false, DraftTokens = 2 };
+    var args = RuntimeSupervisor.Ninfer5080Arguments("m.ninfer", 1234, "key", 65536, false, gpu5080.Index, a.PrefillChunk, tuning);
+    string Value(string name) => args[Array.IndexOf(args, name) + 1];
+    Assert(Value("--device") == "2" && Value("--prefill-chunk") == "256" && Value("--draft-tokens") == "2", "Se ignoró la GPU o la configuración manual.");
+    Assert(args.Contains("--no-thinking") && args.Contains("--no-cuda-graph") && !args.Contains("--vision"), "No se respetaron los modos de memoria y razonamiento.");
+    var settings = new AppSettings { ContextTokens = 131072, NativeTuning = tuning }; GpuProfiles.Apply(settings, gpu5070);
+    Assert(settings.ContextTokens == 131072 && settings.NativeTuning.PrefillChunk == 256, "La detección borró la personalización nativa.");
+    await Throws<InvalidDataException>(() => { new NativeEngineTuning { PrefillChunk = 511 }.Validate(65536); return Task.CompletedTask; });
+    await Throws<InvalidDataException>(() => { Ninfer5080Profile.For(gpu5080 with { Name = "NVIDIA GeForce RTX 5080 Laptop GPU" }); return Task.CompletedTask; });
+});
+await Test("Espacio nativo: descontar el parcial al reanudar", async () =>
+{
+    var paths = new AppPaths(Path.Combine(root, "native-storage")); var settings = new AppSettings();
+    var drive = Path.GetPathRoot(paths.Root)!;
+    var before = PreparationStorage.Requirements(paths, settings)[drive];
+    var model = paths.ActiveModelPath(settings); Directory.CreateDirectory(Path.GetDirectoryName(model)!);
+    await File.WriteAllBytesAsync(model + ".part", new byte[1048576]);
+    Assert(PreparationStorage.Requirements(paths, settings)[drive] == before - 1048576, "Se exige descargar de nuevo el espacio ya guardado.");
+});
 Console.WriteLine($"RESULTADO: {failures} fallos. Registros: {root}");
 return failures == 0 ? 0 : 1;
 
