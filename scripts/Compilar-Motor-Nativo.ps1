@@ -66,7 +66,7 @@ $crt = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Directory | Sort-Object N
 Get-ChildItem (Join-Path $crt.FullName 'x64/Microsoft.VC143.CRT') -Filter '*.dll' | Copy-Item -Destination $package
 $licenses = Join-Path $package 'licenses'
 New-Item -ItemType Directory -Path $licenses -Force | Out-Null
-Copy-Item (Join-Path $source 'LICENSE') (Join-Path $licenses 'NInfer-Apache-2.0.txt')
+Copy-Item -Path (Join-Path $projectRoot 'licenses/ninfer-native/*') -Destination $licenses -Force
 foreach ($port in Get-ChildItem (Join-Path $prefix 'share') -Directory) {
     $notice = Join-Path $port.FullName 'copyright'
     if (Test-Path $notice) { Copy-Item $notice (Join-Path $licenses ($port.Name+'.txt')) }

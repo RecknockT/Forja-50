@@ -10,11 +10,20 @@ jobs:
   native:
     runs-on: windows-2022
     timeout-minutes: 120
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.native-cache/vcpkg
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Recuperar dependencias ya compiladas
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .native-cache/vcpkg
+          key: native-vcpkg-windows2022-msvc1444-${{ hashFiles('build/ninfer-windows.lock.json') }}
       - name: Compilar fuente fijada y comprobar ayuda sin GPU
         shell: pwsh
-        run: ./scripts/Compilar-Motor-Nativo.ps1 -WorkRoot "$env:RUNNER_TEMP/ninfer-native" -Jobs 2
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          ./scripts/Compilar-Motor-Nativo.ps1 -WorkRoot "$env:RUNNER_TEMP/ninfer-native" -Jobs 4
       - name: Publicar motor experimental y procedencia
         shell: pwsh
         env:

@@ -1,4 +1,5 @@
 .tools/
+.native-cache/
 .dev-data/
 artifacts/
 **/bin/
