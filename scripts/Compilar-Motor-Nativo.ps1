@@ -52,7 +52,7 @@ Run $nvcc @('--version')
 Run (Join-Path $vcpkg 'bootstrap-vcpkg.bat') @('-disableMetrics')
 $env:VCPKG_MAX_CONCURRENCY = "$Jobs"
 $env:VCPKG_DISABLE_METRICS = '1'
-Run (Join-Path $vcpkg 'vcpkg.exe') @('install','ffmpeg[core,avcodec,avformat,swscale]:x64-windows','curl[core,schannel]:x64-windows','--clean-after-build')
+Run (Join-Path $vcpkg 'vcpkg.exe') @('install','ffmpeg[core,avcodec,avformat,swscale]:x64-windows','curl[core,ssl]:x64-windows','--clean-after-build')
 $prefix = Join-Path $vcpkg 'installed/x64-windows'
 $build = Join-Path $WorkRoot 'build'
 Run cmake @('-S',$source,'-B',$build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DCMAKE_CUDA_ARCHITECTURES=120a',"-DCMAKE_CUDA_COMPILER=$nvcc", "-DCUDAToolkit_ROOT=$sdk", "-DNINFER_FFMPEG_ROOT=$prefix", "-DNINFER_CURL_ROOT=$prefix",'-DBUILD_TESTING=OFF','-DNINFER_BUILD_BENCHMARKS=OFF')
