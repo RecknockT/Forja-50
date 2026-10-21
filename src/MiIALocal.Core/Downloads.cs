@@ -31,6 +31,7 @@ public sealed class VerifiedDownloader(HttpClient client)
         }
         var partial = destination + ".part";
         var offset = File.Exists(partial) ? new FileInfo(partial).Length : 0;
+        if (offset > 0 && asset.Bytes is null && await MatchesAsync(partial, asset, ct)) { File.Move(partial, destination); return; }
         if (asset.Bytes is long expected && offset >= expected)
         {
             if (offset == expected && await MatchesAsync(partial, asset, ct)) { File.Move(partial, destination); return; }
@@ -39,6 +40,12 @@ public sealed class VerifiedDownloader(HttpClient client)
         using var request = new HttpRequestMessage(HttpMethod.Get, asset.Url);
         if (offset > 0) request.Headers.Range = new RangeHeaderValue(offset, null);
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && offset > 0)
+        {
+            File.Move(partial, partial + ".invalid-" + Guid.NewGuid().ToString("N"));
+            await DownloadAsync(asset, destination, progress, ct);
+            return;
+        }
         response.EnsureSuccessStatusCode();
         if (response.StatusCode == HttpStatusCode.PartialContent)
         {

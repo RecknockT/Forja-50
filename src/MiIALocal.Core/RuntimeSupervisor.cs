@@ -27,7 +27,7 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
             if (!gpu.IsSupported || gpu.TotalMiB < 15000) throw new InvalidOperationException("La placa está fuera del alcance de esta versión.");
             _ = ContextProfile.For(settings.ContextTokens);
             settings.Tuning.Validate(settings.ContextTokens);
-            var profileKey = settings.ContextTokens + ":" + System.Text.Json.JsonSerializer.Serialize(settings.Tuning);
+            var profileKey = settings.ContextTokens + ":" + gpu.Index + ":" + paths.ModelPath(settings) + ":" + System.Text.Json.JsonSerializer.Serialize(settings.Tuning);
             selectedProject = Path.GetFullPath(selectedProject);
             if (!Directory.Exists(selectedProject)) throw new DirectoryNotFoundException("Elegí una carpeta de proyecto válida.");
             if (State == RuntimeState.Ready && loadedProfile == profileKey && project == selectedProject && model is { HasExited: false } && agent is { HasExited: false }) return AgentConfiguration.ProjectUrl(AgentPort, project);

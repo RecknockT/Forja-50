@@ -21,7 +21,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer healthTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private HardwareReport? hardware;
     private CancellationTokenSource? operation;
-    private bool busy, exiting, browserReady;
+    private TaskCompletionSource? operationFinished;
+    private bool busy, closing, exiting, browserReady, synchronizingProfile = true;
     public MainWindow(AppPaths paths)
     {
         InitializeComponent(); NativeWindowTheme.Attach(this); this.paths = paths; settings = paths.LoadSettings();
@@ -30,10 +31,36 @@ public partial class MainWindow : Window
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
         LicenseCheck.IsChecked = settings.LicenseAccepted;
         runtime.StateChanged += (_, message) => Dispatcher.Invoke(() => { StatusLabel.Text = message; UpdateConfigurationSummary(); });
-        UpdateProject(); ModelLocation.Text = string.IsNullOrWhiteSpace(settings.ImportedModel) ? settings.ModelDirectory : settings.ImportedModel;
+        UpdateProject(); ModelLocation.Text = string.IsNullOrWhiteSpace(settings.ImportedModel) ? paths.ModelDirectoryPath(settings) : paths.ModelPath(settings);
         Loaded += async (_, _) =>
         {
             await InspectHardwareAsync();
+            if (App.Argument("--smoke-close") is { } closeResult)
+            {
+                var duringOperation = App.Arguments.Contains("--close-during-operation");
+                var rejectContext = App.Arguments.Contains("--reject-invalid-context");
+                var cancellationObserved = false;
+                if (rejectContext)
+                {
+                    settings.UseRecommendedProfile = false; settings.ContextTokens = 65536; settings.Tuning.HistoryTokens = 32768;
+                    ContextChoice.SelectedIndex = 1; ContextChoice.SelectedIndex = 0;
+                }
+                Closed += (_, _) =>
+                {
+                    if (!File.Exists(closeResult)) AppPaths.AtomicWrite(closeResult, System.Text.Json.JsonSerializer.Serialize(new { status = duringOperation && !cancellationObserved || rejectContext && (settings.ContextTokens != 65536 || ContextChoice.SelectedIndex != 1) ? "FAIL" : "PASS", scenario = rejectContext ? "invalid-context-rejected" : duringOperation ? "cancel-operation-and-close" : App.Arguments.Contains("--repeat-close") ? "repeated-close" : "first-close", date = DateTimeOffset.Now }, AppPaths.JsonOptions));
+                };
+                if (duringOperation) _ = RunOperationAsync(async ct =>
+                {
+                    try { await Task.Delay(Timeout.Infinite, ct); }
+                    catch (OperationCanceledException) { cancellationObserved = true; throw; }
+                });
+                _ = Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (App.Arguments.Contains("--repeat-close")) { Close(); Close(); }
+                    else SystemCommands.CloseWindow(this);
+                }));
+                return;
+            }
             if (App.Argument("--preview-advanced") is { } advancedImage)
             {
                 var dialog = new AdvancedSettingsWindow(settings) { Owner = this }; dialog.Show(); await Task.Delay(300); dialog.UpdateLayout();
@@ -61,14 +88,14 @@ public partial class MainWindow : Window
         };
         healthTimer.Tick += async (_, _) =>
         {
-            if (!busy && runtime.State == RuntimeState.Ready && !runtime.ProcessesHealthy)
+            if (!busy && !closing && runtime.State == RuntimeState.Ready && !runtime.ProcessesHealthy)
             {
                 Chat.Visibility = Visibility.Collapsed; WelcomePane.Visibility = Visibility.Visible;
                 await runtime.StopAsync(); StatusLabel.Text = "Un componente de la IA se detuvo. Podés revisar los registros y volver a iniciar."; RefreshControls();
             }
         };
         healthTimer.Start(); Closing += Window_Closing;
-        UpdateConfigurationSummary();
+        UpdateConfigurationSummary(); synchronizingProfile = false;
     }
     private async Task SmokeChatAsync(string folder)
     {
@@ -107,10 +134,12 @@ public partial class MainWindow : Window
         try
         {
             hardware = await HardwareDetector.DetectAsync(CancellationToken.None);
+            ApplyHardwareProfile();
             GpuLabel.Text = hardware.SelectedGpu?.Profile ?? hardware.Gpus.FirstOrDefault()?.Name ?? "No se detectó una placa NVIDIA";
             RamLabel.Text = $"{hardware.RamGiB:0.0} GiB de RAM · Windows {Environment.OSVersion.Version.Build}";
             StatusLabel.Text = hardware.Problem ?? (provisioner.IsPrepared(settings) ? "Tu IA está preparada. Elegí un proyecto e iniciá." : "Equipo compatible con el perfil. Prepará la IA para empezar.");
             DetailLabel.Text = hardware.Problem is null ? $"RTX 5070 Ti y RTX 5080 de escritorio · contexto {settings.ContextTokens / 1024}K" : "La descarga permanece deshabilitada en equipos fuera del alcance.";
+            if (paths.SettingsRecoveryMessage is { } recovery) DetailLabel.Text = recovery;
         }
         catch (Exception ex) { StatusLabel.Text = ex.Message; GpuLabel.Text = "No se pudo comprobar la placa"; LogError(ex); }
         RefreshControls();
@@ -118,30 +147,44 @@ public partial class MainWindow : Window
     private void RefreshControls()
     {
         var compatible = hardware?.Problem is null && hardware?.SelectedGpu is not null && Environment.OSVersion.Version.Build >= 22000;
-        StartButton.IsEnabled = !busy && compatible && provisioner.IsPrepared(settings) && Directory.Exists(settings.LastProject);
+        var available = !busy && !closing;
+        StartButton.IsEnabled = available && compatible && provisioner.IsPrepared(settings) && Directory.Exists(settings.LastProject);
         StartButton.Content = runtime.State == RuntimeState.Ready ? "Abrir proyecto" : "Iniciar IA";
-        StopButton.IsEnabled = !busy && runtime.State != RuntimeState.Stopped;
-        PrepareButton.IsEnabled = !busy && compatible && runtime.State != RuntimeState.Ready;
-        ProjectButton.IsEnabled = ModelFolderButton.IsEnabled = ImportButton.IsEnabled = !busy;
-        ContextChoice.IsEnabled = !busy && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
+        StopButton.IsEnabled = available && runtime.State != RuntimeState.Stopped;
+        PrepareButton.IsEnabled = available && compatible && runtime.State != RuntimeState.Ready;
+        ProjectButton.IsEnabled = available;
+        ContextChoice.IsEnabled = available && runtime.State is RuntimeState.Stopped or RuntimeState.Error;
         AdvancedButton.IsEnabled = ContextChoice.IsEnabled;
+        ModelFolderButton.IsEnabled = ImportButton.IsEnabled = ContextChoice.IsEnabled;
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
     private void ContextChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (settings is null || paths is null) return; // XAML may raise this during InitializeComponent.
-        settings.ContextTokens = ContextChoice.SelectedIndex == 1 ? 65536 : 32768;
+        var requestedContext = ContextChoice.SelectedIndex == 1 ? 65536 : 32768;
+        try { settings.Tuning.Validate(requestedContext); }
+        catch (InvalidDataException ex)
+        {
+            ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
+            DetailLabel.Text = ex.Message + " Revisá Configuración avanzada antes de cambiar de contexto.";
+            return;
+        }
+        settings.ContextTokens = requestedContext;
+        if (!synchronizingProfile) settings.UseRecommendedProfile = false;
         paths.SaveSettings(settings);
         DetailLabel.Text = settings.ContextTokens == 65536 ? "64K: pruebas básicas aprobadas en RTX 5080; uso prolongado y 5070 Ti pendientes de validar." : "32K: perfil de referencia. El historial se resume cuando se acerca al límite.";
         UpdateConfigurationSummary();
     }
     private void Advanced_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
+        if (busy || closing || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error)) return;
         var dialog = new AdvancedSettingsWindow(settings) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         settings.Tuning = dialog.Result; settings.ContextTokens = dialog.ContextTokens;
+        settings.UseRecommendedProfile = hardware?.SelectedGpu is { } gpu && GpuProfiles.For(gpu).Matches(settings.ContextTokens, settings.Tuning);
+        synchronizingProfile = true;
         ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
+        synchronizingProfile = false;
         paths.SaveSettings(settings); UpdateConfigurationSummary();
         StatusLabel.Text = "Configuración guardada. Se aplicará al iniciar la IA.";
     }
@@ -149,15 +192,24 @@ public partial class MainWindow : Window
     {
         if (settings is null || ConfigurationSummary is null) return;
         var t = settings.Tuning;
-        ConfigurationSummary.Text = $"Qwen 27B · Swift 1.5 · IQ3_S\nNInfer / KVMem 0.18.0\nOpenCode 1.19.3\nGit 2.53.0.3 · Node 24.19.0\nContexto: {settings.ContextTokens:N0} tokens\nHistorial GPU: {t.HistoryTokens:N0}\nReserva GPU: {t.GenerationReserve:N0}\nCaché RAM: {t.EffectiveHostMiB(settings.ContextTokens):N0} MiB\nKV: {t.KvType} · GDN: FP16\nInicio / reciente: {t.SinkTokens} / {t.RecentTokens}\nPrefill: {t.PrefillChunk} · MTP: {t.DraftTokens} borradores\nNgram: {t.NgramDraftTokens} · mínimo {t.NgramMinMatch}\nMTP adaptativo: desactivado\nVentana MTP: historial completo\nRazonamiento: {t.ThinkingTokens:N0} tokens\nSalida máxima: {t.MaxOutput:N0} tokens\nTemperatura motor / agente: {t.Temperature} / {t.AgentTemperature}\nTop P: {t.TopP} · Top K: {t.TopK}\nMin P: {t.MinP}\n1 sesión · 1 petición a la vez\nVisión / caché SSD: desactivadas\nPerfil automático: desactivado\nRed: solo 127.0.0.1\nHistorial: resumen automático";
+        ConfigurationSummary.Text = $"Perfil: {hardware?.SelectedGpu?.Profile ?? "por detectar"}\nAjustes: {(settings.UseRecommendedProfile ? "automáticos" : "personalizados")}\nQwen 27B · Swift 1.5 · IQ3_S\nNInfer / KVMem 0.18.0\nOpenCode 1.19.3\nGit 2.53.0.3 · Node 24.19.0\nContexto: {settings.ContextTokens:N0} tokens\nHistorial GPU: {t.HistoryTokens:N0}\nReserva GPU: {t.GenerationReserve:N0}\nCaché RAM: {t.EffectiveHostMiB(settings.ContextTokens):N0} MiB\nKV: {t.KvType} · GDN: FP16\nInicio / reciente: {t.SinkTokens} / {t.RecentTokens}\nPrefill: {t.PrefillChunk} · MTP: {t.DraftTokens} borradores\nNgram: {t.NgramDraftTokens} · mínimo {t.NgramMinMatch}\nMTP adaptativo: desactivado\nVentana MTP: historial completo\nRazonamiento: {t.ThinkingTokens:N0} tokens\nSalida máxima: {t.MaxOutput:N0} tokens\nTemperatura motor / agente: {t.Temperature} / {t.AgentTemperature}\nTop P: {t.TopP} · Top K: {t.TopK}\nMin P: {t.MinP}\n1 sesión · 1 petición a la vez\nVisión / caché SSD: desactivadas\nPerfil automático: desactivado\nRed: solo 127.0.0.1\nHistorial: resumen automático";
+    }
+    private void ApplyHardwareProfile()
+    {
+        if (hardware?.SelectedGpu is not { } gpu) return;
+        _ = GpuProfiles.Apply(settings, gpu);
+        synchronizingProfile = true;
+        ContextChoice.SelectedIndex = settings.ContextTokens == 65536 ? 1 : 0;
+        synchronizingProfile = false;
+        paths.SaveSettings(settings); UpdateConfigurationSummary();
     }
     private async Task RunOperationAsync(Func<CancellationToken, Task> action)
     {
-        if (busy) return; busy = true; operation = new(); Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true; RefreshControls();
+        if (busy || closing) return; busy = true; operation = new(); operationFinished = new(TaskCreationOptions.RunContinuationsAsynchronously); Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true; RefreshControls();
         try { await action(operation.Token); }
         catch (OperationCanceledException) { StatusLabel.Text = "Acción cancelada. La descarga parcial se conserva para reanudar."; }
         catch (Exception ex) { LogError(ex); StatusLabel.Text = ex.Message; DetailLabel.Text = "Podés revisar Diagnóstico y reintentar. No se muestra un error de una operación anterior."; }
-        finally { operation.Dispose(); operation = null; busy = false; Progress.Visibility = Visibility.Collapsed; RefreshControls(); }
+        finally { operation.Dispose(); operation = null; busy = false; Progress.Visibility = Visibility.Collapsed; RefreshControls(); operationFinished.TrySetResult(); }
     }
     private void UpdateProject()
     {
@@ -195,9 +247,8 @@ public partial class MainWindow : Window
         await RunOperationAsync(async ct =>
         {
             hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
-            var disk = new DriveInfo(Path.GetPathRoot(settings.ModelDirectory)!);
-            var needed = string.IsNullOrWhiteSpace(settings.ImportedModel) ? 30L * 1000 * 1000 * 1000 : 4L * 1000 * 1000 * 1000;
-            if (disk.AvailableFreeSpace < needed) throw new IOException($"Necesitás aproximadamente {needed / 1000000000} GB libres en la unidad elegida para preparar esta versión.");
+            ApplyHardwareProfile();
+            PreparationStorage.Check(paths, settings);
             settings.LicenseAccepted = true; paths.SaveSettings(settings);
             var progress = new Progress<PreparationProgress>(p =>
             {
@@ -210,6 +261,7 @@ public partial class MainWindow : Window
     private async void Start_Click(object sender, RoutedEventArgs e) => await RunOperationAsync(async ct =>
     {
         hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
+        ApplyHardwareProfile();
         var gpu = hardware.SelectedGpu!;
         if (runtime.State != RuntimeState.Ready && gpu.FreeMiB < 13000) throw new InvalidOperationException("Hay otra aplicación usando mucha memoria de la GPU. Detené la otra IA o cerrá el juego y reintentá; no se cerrará ningún programa ajeno.");
         var url = await runtime.StartAsync(settings, gpu, settings.LastProject, ct);
@@ -254,11 +306,31 @@ public partial class MainWindow : Window
     private void Licenses_Click(object sender, RoutedEventArgs e) => OpenExternal("https://huggingface.co/fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer/tree/7da3e38b9ee7a6c8888cf2112d3c5a48a952a2a8");
     private static void OpenExternal(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     private void LogError(Exception error) => File.AppendAllText(Path.Combine(paths.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error + Environment.NewLine);
-    private async void Window_Closing(object? sender, CancelEventArgs e)
+    private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (exiting) return; e.Cancel = true;
-        if ((busy || runtime.State is RuntimeState.Ready or RuntimeState.Loading) && MessageBox.Show(this, "¿Detener la IA y salir? Tus chats y archivos se conservan.", "Mi IA Local", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (closing) return;
+        closing = true; RefreshControls();
+        // Leave WPF's native Closing callback before dialogs, disposal or a second Close.
+        _ = Dispatcher.BeginInvoke(new Action(async () => await FinishClosingAsync()));
+    }
+    private async Task FinishClosingAsync()
+    {
+        if (App.Argument("--smoke-close") is null && (busy || runtime.State is RuntimeState.Ready or RuntimeState.Loading) && MessageBox.Show(this, "¿Detener la IA y salir? Tus chats y archivos se conservan.", "Mi IA Local", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        { closing = false; RefreshControls(); return; }
         operation?.Cancel(); healthTimer.Stop();
-        await runtime.DisposeAsync(); Chat.Dispose(); http.Dispose(); exiting = true; Close();
+        try
+        {
+            if (operationFinished is { } pending) await pending.Task;
+            await runtime.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            LogError(ex); closing = false; healthTimer.Start(); RefreshControls();
+            StatusLabel.Text = "No se pudo terminar de detener la IA. Revisá Diagnóstico y volvé a intentar cerrar.";
+            return;
+        }
+        try { Chat.Dispose(); } catch (Exception ex) { LogError(ex); }
+        http.Dispose(); exiting = true; Close();
     }
 }

@@ -78,6 +78,74 @@ await Test("Descarga: Range incorrecto conserva el parcial", async () =>
     await Throws<InvalidDataException>(() => new VerifiedDownloader(client).DownloadAsync(Asset(bytes), destination, null, default));
     Assert(new FileInfo(destination + ".part").Length == 4, "Se modificó un parcial con datos incorrectos.");
 });
+await Test("Descarga: parcial completo sin tamaño se activa sin pedir Range", async () =>
+{
+    var bytes = Encoding.UTF8.GetBytes("node-completo-verificado"); var destination = Path.Combine(root, "unknown-size.bin");
+    await File.WriteAllBytesAsync(destination + ".part", bytes);
+    using var client = new HttpClient(new Handler(_ => throw new Exception("No debe descargar un parcial completo válido.")));
+    await new VerifiedDownloader(client).DownloadAsync(Asset(bytes) with { Bytes = null }, destination, null, default);
+    Assert((await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "Se perdió el parcial válido.");
+});
+await Test("Descarga: 416 permite reiniciar un parcial incompatible", async () =>
+{
+    var bytes = Encoding.UTF8.GetBytes("archivo-correcto"); var destination = Path.Combine(root, "range-416.bin");
+    await File.WriteAllTextAsync(destination + ".part", "parcial-incompatible"); var requests = 0;
+    using var client = new HttpClient(new Handler(request =>
+    {
+        requests++;
+        if (requests == 1) { Assert(request.Headers.Range is not null, "Falta intento de reanudación."); return new(HttpStatusCode.RequestedRangeNotSatisfiable); }
+        Assert(request.Headers.Range is null, "Se repitió el Range rechazado.");
+        return new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+    }));
+    await new VerifiedDownloader(client).DownloadAsync(Asset(bytes) with { Bytes = null }, destination, null, default);
+    Assert(requests == 2 && (await File.ReadAllBytesAsync(destination)).SequenceEqual(bytes), "El error 416 deja la descarga bloqueada.");
+});
+await Test("Portable: modelo predeterminado sigue a la carpeta de datos", () =>
+{
+    var before = new AppPaths(Path.Combine(root, "portable-original", "datos")); before.SaveSettings(new());
+    var moved = new AppPaths(Path.Combine(root, "portable-movida", "datos")); File.Copy(before.SettingsFile, moved.SettingsFile);
+    Assert(moved.ModelPath(moved.LoadSettings()) == Path.Combine(moved.Root, "models", ReleaseProfile.Model.FileName), "El modelo conserva la ruta de la portable anterior.");
+    return Task.CompletedTask;
+});
+await Test("Ajustes inválidos: recuperar inicio y conservar la copia anterior", () =>
+{
+    foreach (var invalid in new[] { "{incompleto", "{\"ContextTokens\":65536,\"Tuning\":{\"HistoryTokens\":65536}}" })
+    {
+        var paths = new AppPaths(Path.Combine(root, Guid.NewGuid().ToString("N"))); File.WriteAllText(paths.SettingsFile, invalid);
+        var settings = paths.LoadSettings(); var backups = Directory.GetFiles(paths.Root, "settings.invalid-*.json");
+        Assert(settings.ContextTokens == 65536 && settings.Tuning.HistoryTokens == 24576 && !settings.LicenseAccepted, "No se restauró un perfil válido.");
+        Assert(backups.Length == 1 && File.ReadAllText(backups[0]) == invalid && paths.SettingsRecoveryMessage is not null, "No se conservó o informó la configuración anterior.");
+    }
+    return Task.CompletedTask;
+});
+await Test("Almacenamiento: verificar unidad del programa y unidad del modelo", () =>
+{
+    var paths = new AppPaths(Path.Combine(root, "storage")); var settings = new AppSettings { ModelDirectory = "Z:\\models" };
+    var requirements = PreparationStorage.Requirements(paths, settings);
+    Assert(requirements.Count == 2 && requirements[Path.GetPathRoot(paths.Root)!] == 4_000_000_000 && requirements["Z:\\"] == 30_000_000_000, "Se olvidó la unidad del programa.");
+    settings.ImportedModel = "Z:\\model.ninfer";
+    Assert(PreparationStorage.Requirements(paths, settings).Count == 1, "Un modelo importado exige espacio de descarga en la unidad equivocada.");
+    return Task.CompletedTask;
+});
+await Test("Placas: perfiles independientes y solo hardware admitido", async () =>
+{
+    var a = GpuProfiles.For(new(0, "NVIDIA GeForce RTX 5080", 16303, 14000, "test"));
+    var b = GpuProfiles.For(new(0, "NVIDIA GeForce RTX 5070 Ti", 16303, 14000, "test"));
+    Assert(a.Id != b.Id && a.ContextTokens == 65536 && b.ContextTokens == 65536 && a.BasicContextProbeValidated && !b.BasicContextProbeValidated, "Se confundieron perfiles o validaciones físicas.");
+    var edited = a.CreateTuning(); edited.MaxOutput = 4096;
+    Assert(b.CreateTuning().MaxOutput == 8192, "Los perfiles comparten ajustes mutables.");
+    await Throws<InvalidDataException>(() => { GpuProfiles.For(new(0, "NVIDIA GeForce RTX 5080 Laptop GPU", 16303, 14000, "test")); return Task.CompletedTask; });
+});
+await Test("Placas: conservar ajustes manuales anteriores al detector", () =>
+{
+    var paths = new AppPaths(Path.Combine(root, "legacy-profile"));
+    File.WriteAllText(paths.SettingsFile, "{\"ContextTokens\":32768,\"Tuning\":{\"MaxOutput\":4096,\"ThinkingTokens\":512}}");
+    var settings = paths.LoadSettings(); GpuProfiles.Apply(settings, new(0, "NVIDIA GeForce RTX 5070 Ti", 16303, 14000, "test"));
+    Assert(!settings.UseRecommendedProfile && settings.ContextTokens == 32768 && settings.Tuning.MaxOutput == 4096, "El detector sobrescribió una personalización.");
+    settings.UseRecommendedProfile = true; GpuProfiles.Apply(settings, new(0, "NVIDIA GeForce RTX 5080", 16303, 14000, "test"));
+    Assert(settings.ContextTokens == 65536 && settings.Tuning.MaxOutput == 8192 && settings.HardwareProfileId == "rtx5080-desktop-16gb", "No se restauró el perfil de la placa detectada.");
+    return Task.CompletedTask;
+});
 await Test("Proyectos: ruta Unicode viaja completa en el enlace", () =>
 {
     var project = Path.Combine(root, "Proyecto á con espacios"); var url = AgentConfiguration.ProjectUrl(18201, project);

@@ -23,6 +23,12 @@ public partial class App : Application
         {
             File.AppendAllText(Path.Combine(data.Logs, "application-errors.log"), DateTimeOffset.Now + " " + error.Exception + Environment.NewLine);
             error.Handled = true;
+            if (Argument("--smoke-close") is { } resultFile)
+            {
+                AppPaths.AtomicWrite(resultFile, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.Exception.ToString() }, AppPaths.JsonOptions));
+                Dispatcher.BeginInvoke(new Action(() => Shutdown(1)));
+                return;
+            }
             MessageBox.Show("No se pudo completar la acción. Podés revisar el detalle en Diagnóstico.\n\n" + error.Exception.Message, "Mi IA Local");
         };
         MainWindow = new MainWindow(data); MainWindow.Show();

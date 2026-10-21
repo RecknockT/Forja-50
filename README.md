@@ -2,7 +2,7 @@
 
 Aplicación de Windows 11 para trabajar con archivos y Git usando Qwen local. Alcance inicial: RTX 5070 Ti y RTX 5080 de escritorio, ambas de 16 GB, con 32 GB de RAM.
 
-Versión de desarrollo 0.1.3. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
+Versión de desarrollo 0.1.4. Usa WPF, WebView2, NInfer/KVMem y OpenCode. El modelo de 12,8 GB se descarga después de instalar; no forma parte del paquete. Los componentes se descargan desde versiones fijadas y se verifican con SHA-256.
 
 ## Desarrollo
 
@@ -35,7 +35,7 @@ Para preparar el compilador oficial dentro del proyecto y producir ambos formato
 
 El workflow [Compilar Windows](https://github.com/RecknockT/Mi-IA-Local/actions/workflows/windows.yml) compila y prueba en Windows, y genera Setup, ZIP portable y un manifiesto con SHA-256. Se ejecuta al subir cambios a `main`, en pull requests y desde **Run workflow**. Las descargas aparecen como artifacts en cada ejecución durante 30 días. El runner no necesita una GPU y no descarga el modelo; sus pruebas no sustituyen la validación física.
 
-Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.3-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
+Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Version`, por ejemplo `v0.1.4-dev`, se recompila y se publican los archivos en una prerelease de [Releases](https://github.com/RecknockT/Mi-IA-Local/releases). La etiqueta debe coincidir con la versión del código. La publicación de la prerelease ocurre solo si la compilación y las pruebas pasan. Se conserva la visibilidad del repositorio; en un repositorio privado las descargas requieren acceso.
 
 ## Estado
 
@@ -43,7 +43,9 @@ Al subir una etiqueta `v` seguida de la versión declarada en `ReleaseProfile.Ve
 - Chat integrado con archivos, terminal y Git del proyecto. Motor y agente escuchan solo en loopback con autenticación efímera.
 - Contexto predeterminado 64K, caché KV en RAM 4 GiB y alternativa 32K. Historial GPU 24K + reserva 8K en ambos perfiles. Pruebas básicas de recuperación aprobadas en RTX 5080 con entradas de 43K y 52K; pendiente uso prolongado y prueba física en 5070 Ti.
 - Tema oscuro en ventana y chat, panel con configuración activa y ajustes avanzados con validación y restauración de recomendados. Incluye presupuesto KV, salida, razonamiento, MTP, Ngram y muestreo. Los cambios se realizan con la IA detenida.
+- Detector de placa y perfiles separados para 5080 y 5070 Ti, dentro del mismo programa y con el mismo modelo. Ambos usan inicialmente 64K y el mismo presupuesto de memoria; 5070 Ti sigue pendiente de prueba física. Los ajustes manuales se conservan. Restaurar recomendados vuelve al perfil de la placa detectada.
 - Pruebas automatizadas sobre hardware, rutas ZIP, descargas, configuración, Unicode y procesos. Ver `docs/ESTADO.md` para límites de validación.
+- Veintiuna pruebas de núcleo y cuatro regresiones sobre la ventana real: primera X, solicitudes seguidas, cierre durante una operación cancelable y rechazo de contexto incompatible. Se ejecutan al compilar y en GitHub Actions.
 - Setup comprobado en esta PC: instalación, arranque y desinstalación. ZIP portable comprobado con datos locales y 64K. Windows limpio, sesiones prolongadas y 5070 Ti física siguen pendientes antes de distribuirlo como versión final.
 
 ## Licencias

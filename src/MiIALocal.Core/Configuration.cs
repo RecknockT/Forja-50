@@ -5,7 +5,7 @@ namespace MiIALocal.Core;
 public sealed record DownloadAsset(string Id, string Name, string Url, string Sha256, string FileName, long? Bytes = null);
 public static class ReleaseProfile
 {
-    public const string Version = "0.1.3-dev";
+    public const string Version = "0.1.4-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;
@@ -21,8 +21,10 @@ public sealed class AppSettings
 {
     public int ContextTokens { get; set; } = ReleaseProfile.Context;
     public EngineTuning Tuning { get; set; } = new();
+    public bool UseRecommendedProfile { get; set; } = true;
+    public string HardwareProfileId { get; set; } = "";
     public string LastProject { get; set; } = "";
-    public string ModelDirectory { get; set; } = "";
+    public string ModelDirectory { get; set; } = "models";
     public string ImportedModel { get; set; } = "";
     public bool LicenseAccepted { get; set; }
 }
@@ -46,6 +48,7 @@ public sealed class AppPaths
     public string Downloads => Path.Combine(Root, "downloads");
     public string Logs => Path.Combine(Root, "logs");
     public string SettingsFile => Path.Combine(Root, "settings.json");
+    public string? SettingsRecoveryMessage { get; private set; }
     public string AgentConfig => Path.Combine(Root, "opencode.json");
     public string EngineExe => Path.Combine(Runtime, "ninfer", "kvmem-v0.18.0-ninfer-windows-rtx50-sm120a", "workers", "ninfer", "ninfer-kvmem-server.exe");
     public string AgentExe => Path.Combine(Runtime, "opencode", "opencode.exe");
@@ -58,11 +61,29 @@ public sealed class AppPaths
     }
     public AppSettings LoadSettings()
     {
-        if (!File.Exists(SettingsFile)) return new() { ModelDirectory = Path.Combine(Root, "models") };
-        return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsFile), JsonOptions) ?? throw new InvalidDataException("No se pudieron leer los ajustes. Revisá settings.json.");
+        if (!File.Exists(SettingsFile)) return new();
+        try
+        {
+            var text = File.ReadAllText(SettingsFile);
+            var settings = JsonSerializer.Deserialize<AppSettings>(text, JsonOptions) ?? throw new JsonException("Ajustes vacíos.");
+            using var document = JsonDocument.Parse(text);
+            if (!document.RootElement.EnumerateObject().Any(p => p.Name.Equals(nameof(AppSettings.UseRecommendedProfile), StringComparison.OrdinalIgnoreCase))) settings.UseRecommendedProfile = false;
+            settings.Tuning ??= new(); settings.Tuning.Validate(settings.ContextTokens);
+            if (string.IsNullOrWhiteSpace(settings.ModelDirectory)) settings.ModelDirectory = "models";
+            _ = ModelDirectoryPath(settings);
+            return settings;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or ArgumentException)
+        {
+            var backup = Path.Combine(Root, "settings.invalid-" + Guid.NewGuid().ToString("N") + ".json");
+            File.Move(SettingsFile, backup);
+            SettingsRecoveryMessage = "Se restauraron los ajustes recomendados porque el archivo anterior no era válido. La copia anterior está en " + backup;
+            var defaults = new AppSettings(); SaveSettings(defaults); return defaults;
+        }
     }
     public void SaveSettings(AppSettings settings) => AtomicWrite(SettingsFile, JsonSerializer.Serialize(settings, JsonOptions));
-    public string ModelPath(AppSettings settings) => string.IsNullOrWhiteSpace(settings.ImportedModel) ? Path.Combine(settings.ModelDirectory, ReleaseProfile.Model.FileName) : settings.ImportedModel;
+    public string ModelDirectoryPath(AppSettings settings) => Path.GetFullPath(string.IsNullOrWhiteSpace(settings.ModelDirectory) ? "models" : settings.ModelDirectory, Root);
+    public string ModelPath(AppSettings settings) => string.IsNullOrWhiteSpace(settings.ImportedModel) ? Path.Combine(ModelDirectoryPath(settings), ReleaseProfile.Model.FileName) : Path.GetFullPath(settings.ImportedModel, Root);
     public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     public static void AtomicWrite(string path, string text)
     {

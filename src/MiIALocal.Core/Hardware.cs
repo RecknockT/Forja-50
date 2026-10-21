@@ -7,7 +7,7 @@ namespace MiIALocal.Core;
 public sealed record GpuInfo(int Index, string Name, long TotalMiB, long FreeMiB, string Driver)
 {
     public bool IsSupported => Name is "NVIDIA GeForce RTX 5080" or "NVIDIA GeForce RTX 5070 Ti";
-    public string Profile => Name == "NVIDIA GeForce RTX 5080" ? "RTX 5080 · escritorio" : "RTX 5070 Ti · escritorio";
+    public string Profile => Name switch { "NVIDIA GeForce RTX 5080" => "RTX 5080 · escritorio", "NVIDIA GeForce RTX 5070 Ti" => "RTX 5070 Ti · escritorio", _ => Name };
 }
 public sealed record HardwareReport(IReadOnlyList<GpuInfo> Gpus, double RamGiB)
 {

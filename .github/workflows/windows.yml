@@ -89,6 +89,8 @@ jobs:
 
             Incluye Setup y ZIP portable, tema oscuro, contexto predeterminado de 64K y configuracion avanzada. El modelo de unos 12,8 GB se descarga desde el programa; no se incluye en estos archivos.
 
+            Corrige el error al cerrar por primera vez con la X. La compilacion comprueba el cierre inicial, solicitudes repetidas y cancelacion de operaciones al cerrar.
+
             Pruebas basicas realizadas en RTX 5080. Pendientes: Windows limpio, uso prolongado y validacion fisica en RTX 5070 Ti. Los paquetes todavia no tienen firma de editor. Revisar las licencias del modelo y los componentes antes de usarlos.
         run: |
           python3 - <<'PY'

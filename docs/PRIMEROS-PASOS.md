@@ -4,6 +4,7 @@ Esta es una versión de desarrollo para Windows 11 y placas RTX 5070 Ti o RTX 50
 
 1. Usá el Setup para instalar por usuario y crear el acceso directo, o extraé el ZIP portable y ejecutá `app\Mi IA Local.exe`. La portable guarda su configuración y conversaciones en `app\datos`; la instalada usa `%LOCALAPPDATA%\MiIALocal`.
 2. Revisá el equipo detectado. Cerrá juegos u otras IA antes de cargar el modelo.
+   El programa selecciona el perfil de la 5080 o de la 5070 Ti automáticamente. Hoy ambos parten de 64K; la prueba física de la 5070 Ti sigue pendiente. Los cambios manuales en configuración avanzada se conservan entre inicios.
 3. Elegí la ubicación del modelo. Para un modelo nuevo, reservá unos 30 GB de espacio libre durante la preparación. Si ya tenés exactamente el modelo compatible, usá **Usar modelo ya descargado**.
 4. Revisá las licencias y pulsá **Preparar IA**. El modelo pesa unos 12,8 GB; además se descargan el motor y las herramientas. Si cancelás, podés reanudar.
 5. Pulsá **Elegir proyecto** y seleccioná la carpeta de tu repositorio local. **64K** viene seleccionado y superó pruebas básicas en RTX 5080; uso prolongado y 5070 Ti siguen pendientes de validación. Podés elegir **32K** como alternativa.
