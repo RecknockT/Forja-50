@@ -34,7 +34,8 @@ public partial class MainWindow : Window
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
         visualPane = new(paths, () => settings, http, () => hardware?.SelectedGpu, RunOperationAsync,
             message => StatusLabel.Text = message, () => UpdateConfigurationSummary(), p =>
-            { if (closing) return; StatusLabel.Text = p.Stage; Progress.IsIndeterminate = p.Percentage is null; if (p.Percentage is { } percent) Progress.Value = percent; DetailLabel.Text = p.Stage.StartsWith("Generando") ? "El modo visual trabaja sin Qwen de programación ni OpenCode." : p.TransferDetails; });
+            { if (closing) return; StatusLabel.Text = p.Stage.Split(" · hasta", StringSplitOptions.None)[0]; Progress.IsIndeterminate = p.Percentage is null; if (p.Percentage is { } percent) Progress.Value = percent; DetailLabel.Text = p.Stage.StartsWith("Generando") ? "El modo visual trabaja sin Qwen de programación ni OpenCode." : p.TransferDetails; },
+            () => StartButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)), () => Cancel_Click(this, new RoutedEventArgs()));
         VisualContainer.Children.Add(visualPane);
         LicenseCheck.IsChecked = settings.LicenseAccepted;
         runtime.StateChanged += (_, message) => Dispatcher.Invoke(() => { StatusLabel.Text = message; UpdateConfigurationSummary(); });
@@ -350,10 +351,12 @@ public partial class MainWindow : Window
         switchingWorkspace = true; WorkspaceChoice.SelectedIndex = visual ? 1 : 0; switchingWorkspace = false;
         ProjectArea.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
         ProjectSectionLabel.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
+        ConfigurationExpander.IsExpanded = !visual;
         GitHubButton.Visibility = AdvancedButton.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
         WelcomePane.Visibility = !visual && Chat.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         if (visual) Chat.Visibility = Visibility.Collapsed;
         VisualContainer.Visibility = visual ? Visibility.Visible : Visibility.Collapsed;
+        StartButton.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
         WorkspaceTitle.Text = visual ? "Tu espacio para crear imágenes" : "Tu espacio para construir";
         WorkspaceDescription.Text = visual ? "Imágenes, cambios y animaciones, con la IA en tu PC." : "Archivos, herramientas y Git, con la IA en tu PC.";
         if (visual) DetailLabel.Text = "FLUX.2 Klein 4B · Wan opcional · una generación a la vez · sin contexto de programación";

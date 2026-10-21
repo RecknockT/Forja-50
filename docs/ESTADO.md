@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.1.
+21 de octubre de 2026 · desarrollo 0.3.2.
+
+## Interfaz visual 0.3.2
+
+- Preparación, creación y resultado separados; diseño adaptable y contenido centrado en pantallas anchas.
+- Acciones Crear imagen, Editar imagen y Animar visibles; ejemplo de descripción y vista previa de referencia.
+- Detalles técnicos plegados, historial oscuro y estado vacío explicativo.
+- Pausa de descarga y cancelación visibles dentro del modo visual; pruebas de regresión sin iniciar modelos.
+- La generación y los picos de VRAM siguen pendientes de medición física.
 
 ## Corrección de empaquetado 0.3.1
 

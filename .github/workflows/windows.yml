@@ -91,7 +91,7 @@ jobs:
 
             0.3.0 incorpora dos modos independientes: Programacion e Imagenes y animacion. El visual tiene interfaz propia, ComfyUI NVIDIA 0.42.1, FLUX.2 Klein 4B para crear/editar y Wan 2.2 5B opcional para animar. No requiere Qwen de programacion, OpenCode, Git ni repositorio. Descargar imagenes ronda 18,2 GB; animaciones agrega unos 18,1 GB. Los pesos se descargan desde la app, nunca dentro de Setup/portable.
 
-            Edicion con referencia seleccionada, Imagen nueva, galeria, semilla, pasos de animacion y exportacion PNG/MP4/GIF. Un modo activo a la vez; cambio confirmado detiene el anterior. Resultados y referencias protegidos en almacenamiento. Motor visual local con credencial efimera y sin nodos de nube.
+            Interfaz visual guiada: Preparar, Crear o editar y Ver resultado. Acciones Crear imagen, Editar imagen y Animar; vista previa de referencia, detalles tecnicos plegados e historial oscuro. Pausa de descarga y cancelacion dentro del modo visual. Semilla, pasos de animacion y exportacion PNG/MP4/GIF. Un modo activo a la vez; cambio confirmado detiene el anterior. Resultados y referencias protegidos en almacenamiento. Motor visual local con credencial efimera y sin nodos de nube.
 
             MODO VISUAL EXPERIMENTAL: comprobados protocolo simulado, referencia, persistencia, autenticacion, GIF sintetico, extraccion 7z y ventanas. Inferencia real, descarga/extraccion del motor completo, VRAM/RAM y velocidad pendientes en las tres placas. No anunciar estos flujos como validados fisicamente.
 
