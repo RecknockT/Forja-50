@@ -14,12 +14,28 @@ if (args.Contains("--integration")) return await Integration.RunAsync(args);
 if (args.Contains("--reference-probe"))
 {
     using var search = new VisualReferenceSearch();
-    var subject = VisualReferenceSearch.SuggestSubject("generar frieren volando");
+    var subject = VisualReferenceSearch.AutomaticSubject("frieren la elfa del anime, volando con su baston magico") ?? throw new Exception("No se detectó el nombre del personaje.");
     var choices = await search.SearchAsync(subject, default);
     var selected = VisualReferenceSearch.AutomaticMatch(choices, subject) ?? throw new Exception("No se encontró el personaje de Frieren.");
     var folder = Path.Combine(Environment.CurrentDirectory, "artifacts", "reference-probe");
     var image = await search.DownloadAsync(selected, folder, default);
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { selected.Title, selected.PageUrl, Image = image, Bytes = new FileInfo(image).Length }));
+    if (args.Contains("--generate-reference"))
+    {
+        var rootIndex = Array.IndexOf(args, "--data-root");
+        if (rootIndex < 0 || rootIndex + 1 >= args.Length || !Path.IsPathFullyQualified(args[rootIndex + 1]) || !File.Exists(Path.Combine(args[rootIndex + 1], "settings.json"))) throw new Exception("La prueba física requiere una carpeta de datos existente explícita.");
+        var paths = new AppPaths(args[rootIndex + 1]); var settings = paths.LoadSettings();
+        if (!settings.Visual.LicenseAccepted) throw new Exception("La prueba requiere las licencias ya aceptadas por el usuario.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+        var hardware = await HardwareDetector.DetectAsync(timeout.Token);
+        var gpu = hardware.SelectedGpu ?? throw new Exception(hardware.Problem);
+        if (hardware.Problem is not null || gpu.FreeMiB < 11000) throw new Exception("La placa no está disponible para la prueba física.");
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        await using var runtime = new VisualRuntime(paths, http);
+        await runtime.StartAsync(settings.Visual, gpu, timeout.Token);
+        var job = await runtime.GenerateAsync(new(VisualTask.Image, "frieren la elfa del anime, volando con su baston magico", 1024, 1024, 961294606), image, null, timeout.Token, selected);
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { job.Id, job.Status, Files = job.Files, Reference = job.OnlineReference?.Title }));
+    }
     return 0;
 }
 if (args.Contains("--context-probe")) return await ContextProbe.RunAsync(args);

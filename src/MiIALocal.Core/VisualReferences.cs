@@ -28,7 +28,9 @@ public sealed class VisualReferenceSearch : IDisposable
         var actions = new HashSet<string>("volando flying caminando walking corriendo running sentado sentada sitting saltando jumping luchando fighting bailando dancing con with sobre above en in bajo under al at estilo style".Split(' '), StringComparer.OrdinalIgnoreCase);
         var stop = words.Count > 1 ? words.FindIndex(1, words.Count - 1, word => actions.Contains(word)) : -1;
         if (stop >= 0) words.RemoveRange(stop, words.Count - stop);
-        var subject = string.Join(' ', words.Take(6));
+        var subject = string.Join(' ', words.Take(12));
+        subject = Regex.Replace(subject, @"\s+(?:(?:la|el|los|las|the)\s+(?:elfa|elfo|elf|personaje|character|mago|maga|wizard|mage|guerrera|guerrero|warrior|protagonista|protagonist|chica|chico|girl|boy)|(?:del|de|from(?:\s+the)?)\s+(?:anime|manga|serie|series|película|pelicula|movie)|que\s+es)\b.*$", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        subject = string.Join(' ', subject.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(6));
         return subject.Length > 100 ? subject[..100] : subject;
     }
 

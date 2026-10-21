@@ -1,6 +1,13 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.4.
+21 de octubre de 2026 · desarrollo 0.3.5.
+
+## Nombre y descripción del personaje 0.3.5
+
+- El pedido «frieren la elfa del anime, volando con su baston magico» se generó sin referencia en 0.3.4: la consulta incluía la descripción y no coincidía con la ficha. Corregida la separación del nombre y las aposiciones («la elfa», «del anime», «the elf»), conservando nombres compuestos y el pedido original.
+- El flujo de una escena nueva con referencia indica conservar identidad, cabello, vestimenta y accesorios característicos; editar conserva su pedido independiente. Las pruebas verifican nombre, referencia real y grafo.
+- La referencia utilizada o la continuación sin referencia quedan visibles después de generar, también en el aviso principal. La detección sigue siendo conservadora; no es un LLM interpretando cualquier descripción.
+- Prueba física en esta RTX 5080 con el texto y semilla del fallo: generación completada con referencia registrada «Frieren (character)». La inspección mostró cabello plateado, orejas élficas y vestimenta/báculo cercanos a la referencia; no garantiza identidad perfecta ni valida otros personajes o placas. Se conservó el resultado en el historial del usuario. La prueba explícita `--reference-probe --generate-reference --data-root` requiere datos existentes, licencias aceptadas y GPU disponible; nunca se ejecuta en la batería normal o en CI.
 
 ## Conceptos generales y animación 0.3.4
 

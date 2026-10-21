@@ -97,6 +97,8 @@ jobs:
 
             0.3.4: los estilos generales, como anime de los 90, no obligan a elegir una serie. La busqueda automatica solo usa coincidencias claras; el selector queda para nombres buscados expresamente. Wan recibe su propio negativo codificado y conserva el pedido de movimiento y el estilo de la imagen inicial. Video cuadrado, horizontal o vertical; marco completo sin recorte. Ajuste y orientacion probados en CPU. El video aportado por el usuario evidencio deformaciones; la calidad del flujo revisado necesita una nueva prueba real.
 
+            0.3.5: separa el nombre del personaje de descripciones como la elfa del anime o the elf. Conserva nombres compuestos y el pedido de la escena. Refuerza identidad al generar con referencia y muestra si se utilizo una imagen o se continuo sin ella. Prueba puntual en RTX 5080 completada con el pedido original de Frieren y referencia registrada; sin garantia de identidad perfecta ni validacion general de las otras placas.
+
             MODO VISUAL EXPERIMENTAL: comprobados protocolo simulado, referencia, persistencia, autenticacion, GIF sintetico, extraccion 7z y ventanas. Inferencia real, descarga/extraccion del motor completo, VRAM/RAM y velocidad pendientes en las tres placas. No anunciar estos flujos como validados fisicamente.
 
             Incluye Setup y ZIP portable, tema oscuro, configuracion avanzada, perfiles automaticos para cada placa y actualizador. Motor NInfer nativo Windows basado en el fork de Todd Ballinger; modelo oficial Qwen3.8-27B de 16,5 GB descargado desde el programa. No incluye pesos en el instalador.

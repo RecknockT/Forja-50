@@ -280,13 +280,16 @@ public sealed class VisualPane : UserControl
                 }
             }
             else if (kind == VisualTask.Image) { onlineReference = null; webStatus.Text = "Creación sin búsqueda en internet."; webSource.Visibility = Visibility.Collapsed; }
+            var lookupNote = webStatus.Text;
             var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
             LoadGallery();
             var file = job.Files.FirstOrDefault(f => Path.GetExtension(f) == ".png") ?? job.Files.First();
             ShowResult(file);
             if (kind != VisualTask.Animation) { SetReference(file); task.SelectedIndex = 1; }
             ShowOnlineSource(job.OnlineReference);
-            status(kind == VisualTask.Animation ? "Animación creada. Podés abrir el MP4 o guardar la versión GIF." : "Imagen creada. Pedí otro cambio o elegí Crear imagen para empezar otra.");
+            if (kind == VisualTask.Image && job.OnlineReference is null && visual.WebReferencesEnabled) webStatus.Text = lookupNote;
+            var referenceSummary = kind == VisualTask.Image && visual.WebReferencesEnabled ? job.OnlineReference is { } source ? " Referencia utilizada: " + source.Title + "." : " " + lookupNote : "";
+            status((kind == VisualTask.Animation ? "Animación creada. Podés abrir el MP4 o guardar la versión GIF." : "Imagen creada. Pedí otro cambio o elegí Crear imagen para empezar otra.") + referenceSummary);
         }); }
         finally { generating = false; LoadGallery(); Refresh(); }
     }

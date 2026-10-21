@@ -12,6 +12,9 @@ static class VisualTests
             foreach (var idea in new[] { "anime de los 90", "generar una imagen de anime de los 90", "estética anime noventera", "un paisaje con estilo retro", "1990s anime style", "un robot caminando" })
                 assert(VisualReferenceSearch.AutomaticSubject(idea) is null, "Un concepto general se convierte en una obra: " + idea);
             assert(VisualReferenceSearch.AutomaticSubject("Frieren volando con estilo anime de los 90") == "Frieren", "Se perdió el personaje al pedir un estilo.");
+            foreach (var prompt in new[] { "frieren la elfa del anime, volando con su baston magico", "frieren del anime, volando con su baston magico", "Frieren the elf flying with her staff" })
+                assert(VisualReferenceSearch.AutomaticSubject(prompt)!.Equals("Frieren", StringComparison.OrdinalIgnoreCase), "Se confunde el nombre con su descripción: " + prompt);
+            assert(VisualReferenceSearch.SuggestSubject("Sailor Moon la guerrera, volando") == "Sailor Moon", "Se recorta un nombre compuesto.");
             assert(VisualReferenceSearch.SuggestSubject("generar una imagen de frieren volando") == "frieren", "La búsqueda incluye la acción.");
             assert(VisualReferenceSearch.SuggestSubject("Create an image of Frieren flying") == "Frieren", "La sugerencia en inglés incluye el pedido.");
             assert(VisualReferenceSearch.SuggestSubject("") == "", "El pedido vacío falla.");
@@ -124,6 +127,8 @@ static class VisualTests
             var create = JsonSerializer.Serialize(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 42), new string('b', 32)));
             assert(edit.Contains("ReferenceLatent") && edit.Contains("referencia.png") && edit.Contains("Solo el brazo"), "No se pasó la edición condicionada.");
             assert(!create.Contains("ReferenceLatent") && !create.Contains("LoadImage"), "Imagen nueva hereda la anterior.");
+            var referenced = JsonSerializer.Serialize(VisualWorkflows.Build(new(VisualTask.Image, "Frieren flying", 1024, 1024, 42), new string('b', 32), "wiki-reference.png"));
+            assert(referenced.Contains("wiki-reference.png") && referenced.Contains("Preserve their identity") && referenced.Contains("Frieren flying"), "No se aplica la referencia de identidad al crear la escena.");
             return Task.CompletedTask;
         });
         await test("Visual: animación produce MP4 y GIF con una única difusión", () =>

@@ -15,7 +15,10 @@ public static class VisualWorkflows
         Node("1", "UNETLoader", ("unet_name", animation ? VisualCatalog.Wan.Asset.FileName : VisualCatalog.Flux.Asset.FileName), ("weight_dtype", "default"));
         Node("2", "CLIPLoader", ("clip_name", animation ? VisualCatalog.WanText.Asset.FileName : VisualCatalog.FluxText.Asset.FileName), ("type", animation ? "wan" : "flux2"), ("device", "default"));
         Node("3", "VAELoader", ("vae_name", animation ? VisualCatalog.WanVae.Asset.FileName : VisualCatalog.FluxVae.Asset.FileName));
-        Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", animation ? VisualAnimation.Prompt(r.Prompt, reference is not null) : r.Prompt));
+        var prompt = animation ? VisualAnimation.Prompt(r.Prompt, reference is not null) : r.Task == VisualTask.Image && reference is not null
+            ? "Create a new scene featuring the same character or subject shown in the reference image. Preserve their identity, facial features, hair color, clothing and characteristic accessories. Follow this scene request: " + r.Prompt
+            : r.Prompt;
+        Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", prompt));
         if (animation) Node("5", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.NegativePrompt));
         else Node("5", "ConditioningZeroOut", ("conditioning", Link("4")));
         if (reference is not null) Node("20", "LoadImage", ("image", reference));
