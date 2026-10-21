@@ -1,6 +1,10 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.0.
+21 de octubre de 2026 · desarrollo 0.3.1.
+
+## Corrección de empaquetado 0.3.1
+
+- Corregida la ruta de licencias desde el proyecto WPF. La publicación comprueba que los avisos completos estén presentes antes de crear Setup/portable. La revisión del ZIP 0.3.0 detectó su ausencia; 0.3.1 reemplaza esa entrega.
 
 ## Dos modos independientes (implementación inicial)
 
