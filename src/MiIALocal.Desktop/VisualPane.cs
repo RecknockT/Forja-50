@@ -18,8 +18,6 @@ public sealed class VisualPane : UserControl
     private readonly Action<string> status;
     private readonly Action changed;
     private readonly Action<PreparationProgress> progress;
-    private readonly Action activateMode;
-    private readonly Action cancelOperation;
     private readonly VisualProvisioner provisioner;
     private readonly VisualRuntime runtime;
     private readonly TextBox prompt = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 90, MaxLength = 6000, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -38,12 +36,15 @@ public sealed class VisualPane : UserControl
     private VisualReference? onlineReference;
     private readonly Button prepare = new() { Content = "Preparar imágenes" };
     private readonly Button generate = new() { Content = "Generar", Background = new SolidColorBrush(Color.FromRgb(8, 127, 112)), Foreground = Brushes.White };
+    private readonly Button example = new() { Content = "Probar un ejemplo", HorizontalAlignment = HorizontalAlignment.Left, FontSize = 12, Padding = new(0, 8, 0, 8), Background = Brushes.Transparent, Foreground = new SolidColorBrush(Color.FromRgb(91, 211, 189)) };
     private readonly Button attach = new() { Content = "Elegir referencia" };
     private readonly Button clear = new() { Content = "Imagen nueva" };
     private readonly Button open = new() { Content = "Abrir resultado" };
     private readonly Button export = new() { Content = "Guardar como…" };
-    private readonly Button activate = new() { Content = "Activar modo imagen" };
-    private readonly Button cancel = new() { Content = "Pausar descarga" };
+    private readonly TextBlock taskHelp = new() { Foreground = Brushes.LightGray, Margin = new(0, 10, 0, 14) };
+    private readonly WrapPanel referenceActions = new();
+    private readonly TextBlock creationHint = new() { Foreground = new SolidColorBrush(Color.FromRgb(91, 211, 189)), Margin = new(0, 10, 0, 0), TextWrapping = TextWrapping.Wrap };
+    private readonly Expander onlineOptions = new() { Header = "Opciones de la referencia", Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) };
     private readonly TextBlock setupStatus = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray };
     private readonly TextBlock resultTitle = new() { Text = "Tu próxima creación", FontSize = 20, FontWeight = FontWeights.SemiBold };
     private readonly TextBlock emptyPreview = new() { Text = "La imagen aparecerá acá\n\nCreá algo nuevo o elegí una imagen para cambiar un detalle.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 300 };
@@ -67,17 +68,14 @@ public sealed class VisualPane : UserControl
     public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nFLUX.2 Klein 4B · BF16 · 4 pasos\nCodificador interno Qwen 4B\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nTransferencia de componentes a RAM\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nPruebas de inferencia: pendientes";
 
     public VisualPane(AppPaths paths, Func<AppSettings> settings, HttpClient http, Func<GpuInfo?> gpu,
-        Func<Func<CancellationToken, Task>, Task> run, Action<string> status, Action changed, Action<PreparationProgress> progress, Action activateMode, Action cancelOperation)
+        Func<Func<CancellationToken, Task>, Task> run, Action<string> status, Action changed, Action<PreparationProgress> progress)
     {
         Foreground = Brushes.White;
         this.paths = paths; this.settings = settings; this.gpu = gpu; this.run = run; this.status = status; this.changed = changed; this.progress = progress;
-        this.activateMode = activateMode; this.cancelOperation = cancelOperation;
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
         new VisualJobStore(paths).RecoverInterrupted();
         var panel = new StackPanel { Margin = new(24), MaxWidth = 1200, HorizontalAlignment = HorizontalAlignment.Stretch };
         Content = new Border { Background = new SolidColorBrush(Color.FromRgb(24, 35, 44)), CornerRadius = new(14), Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } };
-        panel.Children.Add(new TextBlock { Text = "De una idea a tu imagen", FontSize = 28, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = "1  Prepará tu equipo     →     2  Creá o editá     →     3  Guardá tu resultado", Margin = new(0, 10, 0, 20), TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Color.FromRgb(91, 211, 189)) });
         var preparation = new StackPanel();
         var details = new StackPanel(); details.Children.Add(package);
         preparation.Children.Add(new TextBlock { Text = "La preparación se hace una sola vez. Después podés crear sin conexión.", Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 10) });
@@ -87,26 +85,26 @@ public sealed class VisualPane : UserControl
         licenses.Click += (_, _) => ShowLicenses(); preparation.Children.Add(licenses);
         preparation.Children.Add(license); license.Margin = new(0, 0, 0, 12); license.Content = "Acepto las licencias de los componentes visuales";
         preparation.Children.Add(new Expander { Header = "Ver componentes y ubicaciones", Foreground = Brushes.LightGray, Content = details, Margin = new(0, 10, 0, 0) });
-        downloads.Header = "Preparación y descargas"; downloads.Content = preparation; downloads.IsExpanded = !IsPrepared;
-        var setup = new StackPanel(); setup.Children.Add(new TextBlock { Text = "1 · Preparar", FontSize = 18, FontWeight = FontWeights.SemiBold });
-        setup.Children.Add(setupStatus); setupStatus.Margin = new(0, 6, 0, 12); setup.Children.Add(downloads);
-        var setupActions = new WrapPanel { Margin = new(0, 14, 0, 0) }; prepare.HorizontalAlignment = activate.HorizontalAlignment = cancel.HorizontalAlignment = HorizontalAlignment.Left;
-        prepare.Background = activate.Background = new SolidColorBrush(Color.FromRgb(8, 127, 112)); prepare.Foreground = activate.Foreground = Brushes.White;
-        setupActions.Children.Add(prepare); setupActions.Children.Add(activate); setupActions.Children.Add(cancel); setup.Children.Add(setupActions);
+        downloads.Header = "Modelos y descargas"; downloads.Content = preparation; downloads.IsExpanded = !IsPrepared;
+        var setup = new StackPanel(); setup.Children.Add(downloads);
+        setupStatus.Margin = new(0, 10, 0, 0); setupStatus.FontSize = 12; setup.Children.Add(setupStatus);
+        prepare.HorizontalAlignment = HorizontalAlignment.Left; prepare.Margin = new(0, 12, 0, 0); preparation.Children.Add(prepare);
         panel.Children.Add(Card(setup));
-        panel.Children.Add(workspace); workspace.Margin = new(0, 18, 0, 0);
+        panel.Children.Add(workspace);
         workspace.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); workspace.ColumnDefinitions.Add(new() { Width = new(1.35, GridUnitType.Star) });
         workspace.RowDefinitions.Add(new() { Height = GridLength.Auto }); workspace.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var editCard = Card(editor); var resultCard = Card(results); workspace.Children.Add(editCard); workspace.Children.Add(resultCard);
-        editor.Children.Add(new TextBlock { Text = "2 · ¿Qué querés crear?", FontSize = 20, FontWeight = FontWeights.SemiBold });
-        editor.Children.Add(new TextBlock { Text = "Elegí una acción y contame tu idea.", Foreground = Brushes.LightGray, Margin = new(0, 6, 0, 16) });
+        editor.Children.Add(new TextBlock { Text = "¿Qué querés hacer?", FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 16) });
         task.Visibility = Visibility.Collapsed; editor.Children.Add(task);
         var tabs = new WrapPanel { Margin = new(0, 0, 0, 14) };
         taskTabs = new[] { new Button { Content = "Crear imagen" }, new Button { Content = "Editar imagen" }, new Button { Content = "Animar" } };
         for (var index = 0; index < taskTabs.Length; index++) { var selected = index; taskTabs[index].Padding = new(10, 8, 10, 8); taskTabs[index].FontSize = 12; taskTabs[index].Click += (_, _) => task.SelectedIndex = selected; tabs.Children.Add(taskTabs[index]); }
         editor.Children.Add(tabs);
-        editor.Children.Add(new TextBlock { Text = "Tu descripción", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 8) }); prompt.MinHeight = 120; editor.Children.Add(prompt);
-        var example = new Button { Content = "Probar un ejemplo", HorizontalAlignment = HorizontalAlignment.Left, FontSize = 12, Padding = new(0, 8, 0, 8), Background = Brushes.Transparent, Foreground = new SolidColorBrush(Color.FromRgb(91, 211, 189)) };
+        editor.Children.Add(taskHelp);
+        attach.Content = "Elegir una imagen"; clear.Content = "Quitar referencia"; foreach (var button in new[] { attach, clear }) { button.FontSize = 12; button.Padding = new(10, 7, 10, 7); } referenceActions.Children.Add(attach); referenceActions.Children.Add(clear); editor.Children.Add(referenceActions);
+        referenceLabel.Margin = new(0, 6, 0, 10); referenceLabel.FontSize = 12; editor.Children.Add(referenceLabel);
+        editor.Children.Add(new TextBlock { Text = "Tu descripción", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 8) }); prompt.MinHeight = 100; editor.Children.Add(prompt);
+        generate.HorizontalAlignment = HorizontalAlignment.Left; generate.MinWidth = 180; generate.Margin = new(0, 12, 0, 0); editor.Children.Add(generate); editor.Children.Add(creationHint);
         example.Click += (_, _) => prompt.Text = task.SelectedIndex switch { 1 => "Cambiá solo el brazo izquierdo a rojo. Conservá los demás detalles.", 2 => "El personaje saluda suavemente con la mano. Cámara fija.", _ => "Un pequeño robot blanco en un taller acogedor, iluminación cálida y estilo de ilustración 3D." }; editor.Children.Add(example);
         editor.Children.Add(new TextBlock { Text = "Formato", FontWeight = FontWeights.SemiBold, Margin = new(0, 6, 0, 8) });
         var options = new WrapPanel(); options.Children.Add(size); options.Children.Add(duration); editor.Children.Add(options);
@@ -118,14 +116,11 @@ public sealed class VisualPane : UserControl
         var webOptions = new StackPanel();
         webOptions.Children.Add(new TextBlock { Text = "Personaje u objeto (opcional; vacío = detectar en tu descripción)", FontSize = 12, Margin = new(0, 10, 0, 6) }); webOptions.Children.Add(webSubject);
         webOptions.Children.Add(new TextBlock { Text = "Los estilos generales, como anime de los 90, se describen directamente al modelo. La búsqueda automática solo usa coincidencias claras; no te obliga a elegir una serie. Escribí un nombre aquí para buscarlo expresamente. Se envía ese término a Wikipedia. Editar y animar usan la imagen elegida.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
-        editor.Children.Add(new Expander { Header = "Referencias en línea · opciones", Foreground = Brushes.White, Content = webOptions, Margin = new(0, 8, 0, 10) });
+        onlineOptions.Content = webOptions; editor.Children.Add(onlineOptions);
         editor.Children.Add(webStatus); editor.Children.Add(webSource);
         webReferences.Click += (_, _) => { settings().Visual.WebReferencesEnabled = webReferences.IsChecked == true; Save(); Refresh(); };
         webSource.Click += (_, _) => { if (onlineReference is { } item && VisualReferenceSearch.AllowedPage(item.PageUrl)) OpenPath(item.PageUrl); };
-        var references = new WrapPanel(); attach.Content = "Elegir una imagen"; clear.Content = "Quitar referencia"; references.Children.Add(attach); references.Children.Add(clear); editor.Children.Add(references);
-        referenceLabel.Margin = new(0, 10, 0, 18); referenceLabel.FontSize = 12; editor.Children.Add(referenceLabel);
-        generate.HorizontalAlignment = HorizontalAlignment.Left; generate.MinWidth = 180; editor.Children.Add(generate);
-        results.Children.Add(resultTitle); results.Children.Add(new TextBlock { Text = "3 · Revisá y guardá", Foreground = Brushes.LightGray, Margin = new(0, 6, 0, 14) });
+        results.Children.Add(resultTitle); results.Children.Add(new TextBlock { Text = "Acá podés revisar, abrir y guardar tu creación.", Foreground = Brushes.LightGray, Margin = new(0, 6, 0, 14) });
         var canvas = new Grid { MinHeight = 280, Background = new SolidColorBrush(Color.FromRgb(13, 21, 28)), Margin = new(0, 0, 0, 14) }; preview.Height = 300; canvas.Children.Add(preview); canvas.Children.Add(emptyPreview); results.Children.Add(canvas);
         var actions = new WrapPanel(); actions.Children.Add(open); actions.Children.Add(export);
         open.Content = "Abrir"; export.Content = "Guardar…";
@@ -135,18 +130,17 @@ public sealed class VisualPane : UserControl
         history.Children.Add(new TextBlock { Text = "Seleccioná una imagen anterior para seguir editándola.", Foreground = Brushes.LightGray, Margin = new(0, 6, 0, 10) }); history.Children.Add(emptyGallery); history.Children.Add(gallery); panel.Children.Add(Card(history));
         gallery.Background = new SolidColorBrush(Color.FromRgb(16, 24, 32)); gallery.Foreground = Brushes.White; gallery.BorderBrush = Brushes.DarkSlateGray;
         gallery.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='ListBox'><Border Background='{TemplateBinding Background}' Padding='8' CornerRadius='8'><ScrollViewer Background='{TemplateBinding Background}' Focusable='False'><ItemsPresenter/></ScrollViewer></Border></ControlTemplate>");
-        SizeChanged += (_, _) => { var narrow = ActualWidth < 960; workspace.ColumnDefinitions[1].Width = narrow ? new(0) : new(1.35, GridUnitType.Star); Grid.SetRow(resultCard, narrow ? 1 : 0); Grid.SetColumn(resultCard, narrow ? 0 : 1); editCard.Margin = new(0, 0, narrow ? 0 : 16, narrow ? 16 : 0); };
+        SizeChanged += (_, _) => { var narrow = ActualWidth < 800; workspace.ColumnDefinitions[1].Width = narrow ? new(0) : new(1.35, GridUnitType.Star); Grid.SetRow(resultCard, narrow ? 1 : 0); Grid.SetColumn(resultCard, narrow ? 0 : 1); editCard.Margin = new(0, 0, narrow ? 0 : 16, narrow ? 16 : 0); };
         panel.Children.Add(new TextBlock { Text = "Animaciones experimentales: GIF y MP4. La primera carga puede tardar; la velocidad depende de tu placa y memoria libre. No se garantiza un bucle continuo.", Margin = new(0, 14, 0, 0), Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap, FontSize = 11 });
-        activate.Click += (_, _) => this.activateMode(); cancel.Click += (_, _) => this.cancelOperation();
         animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); };
         license.Click += (_, _) => { settings().Visual.LicenseAccepted = license.IsChecked == true; Save(); };
-        task.SelectionChanged += (_, _) => { Refresh(); if (task.SelectedIndex == 2 && !provisioner.IsPrepared(true)) status("Para animar, detené la IA, abrí Preparación y descargas y marcá la descarga de Wan. Después pulsá Descargar y preparar."); };
+        task.SelectionChanged += (_, _) => { Refresh(); if (task.SelectedIndex == 2 && !provisioner.IsPrepared(true)) status("Para animar, detené la IA, abrí Modelos y descargas y marcá la descarga de Wan. Después pulsá Descargar y preparar."); };
         prepare.Click += async (_, _) =>
         {
             if (!available || !compatible) return;
             if (license.IsChecked != true) { status("Revisá y aceptá las licencias visuales antes de descargar."); return; }
             preparing = true;
-            try { await run(async ct => { await provisioner.PrepareAsync(settings().Visual, new Progress<PreparationProgress>(progress), ct); status("Descarga terminada. Pulsá Activar modo imagen para empezar."); }); }
+            try { await run(async ct => { await provisioner.PrepareAsync(settings().Visual, new Progress<PreparationProgress>(progress), ct); status("Modelos listos. Pulsá Iniciar IA arriba a la derecha."); }); }
             finally { preparing = false; Refresh(); }
         };
         attach.Click += (_, _) =>
@@ -189,22 +183,20 @@ public sealed class VisualPane : UserControl
         var prepared = IsPrepared;
         prepare.IsEnabled = available && compatible && !IsActive;
         prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true) ? "Agregar animaciones" : "Comprobar / reparar";
-        activate.Visibility = prepared && !IsReady ? Visibility.Visible : Visibility.Collapsed;
-        activate.IsEnabled = available && compatible && prepared;
-        cancel.Visibility = preparing || generating || loading ? Visibility.Visible : Visibility.Collapsed;
-        cancel.Content = preparing ? "Pausar descarga" : "Cancelar";
-        setupStatus.Text = preparing ? "Estamos preparando todo. Podés pausar y continuar después." : loading ? "Activando el modo imagen…" : IsReady ? "Todo listo. Ya podés crear o editar." : prepared ? "Descarga terminada. Activá el modo imagen para empezar." : "Descargá lo necesario para crear imágenes en tu equipo.";
+        setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después." : loading ? "Iniciando la IA…" : IsReady ? "IA iniciada. Elegí qué querés crear." : prepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : "Primero descargá los modelos. Después podrás iniciar la IA desde arriba a la derecha.";
+        setupStatus.Visibility = prepared && !preparing && !loading ? Visibility.Collapsed : Visibility.Visible;
         if (prepared && !wasPrepared && !preparing) downloads.IsExpanded = false;
         wasPrepared = prepared;
         generate.IsEnabled = available && compatible && IsReady && (task.SelectedIndex != 1 || reference is not null)
             && (task.SelectedIndex != 2 || provisioner.IsPrepared(true));
-        prompt.IsEnabled = available; task.IsEnabled = available;
+        prompt.IsEnabled = example.IsEnabled = available; task.IsEnabled = available;
         for (var index = 0; index < taskTabs.Length; index++) { taskTabs[index].IsEnabled = available; taskTabs[index].Background = new SolidColorBrush(index == task.SelectedIndex ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67)); }
         animation.IsEnabled = license.IsEnabled = available && !IsActive;
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = available;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
         seed.IsEnabled = available; steps.IsEnabled = available && task.SelectedIndex == 2;
         webReferences.IsEnabled = available && task.SelectedIndex == 0;
+        webReferences.Visibility = onlineOptions.Visibility = task.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         webSubject.IsEnabled = available && task.SelectedIndex == 0 && webReferences.IsChecked == true;
         if (animationFormats != (task.SelectedIndex == 2))
         {
@@ -217,6 +209,13 @@ public sealed class VisualPane : UserControl
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
+        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
+        referenceActions.Visibility = task.SelectedIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
+        clear.Visibility = reference is null ? Visibility.Collapsed : Visibility.Visible;
+        referenceLabel.Visibility = task.SelectedIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
+        referenceLabel.Text = reference is null ? "Elegí una imagen para usarla como punto de partida." : task.SelectedIndex == 0 ? "Tu imagen anterior sigue disponible en Editar imagen y Animar." : IsOwnedExistingResult(reference) ? "Imagen seleccionada de tus creaciones. Escribí qué querés cambiar." : "Imagen seleccionada: " + Path.GetFileName(reference);
+        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true) ? "Agregá el modelo de animación en Modelos y descargas." : "";
+        creationHint.Visibility = string.IsNullOrEmpty(creationHint.Text) ? Visibility.Collapsed : Visibility.Visible;
     }
     public async Task StartAsync(CancellationToken ct)
     {
@@ -281,6 +280,7 @@ public sealed class VisualPane : UserControl
             }
             else if (kind == VisualTask.Image) { onlineReference = null; webStatus.Text = "Creación sin búsqueda en internet."; webSource.Visibility = Visibility.Collapsed; }
             var lookupNote = webStatus.Text;
+            status(kind == VisualTask.Animation ? "Preparando la animación; la primera carga puede tardar…" : "Preparando tu imagen…");
             var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
             LoadGallery();
             var file = job.Files.FirstOrDefault(f => Path.GetExtension(f) == ".png") ?? job.Files.First();
@@ -348,15 +348,10 @@ public sealed class VisualPane : UserControl
         var image = BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, new byte[16], 8);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image)); using (var output = File.Create(file)) encoder.Save(output);
         SetReference(file); task.SelectedIndex = 1;
-        if (reference != file || !referenceLabel.Text.Contains("Imagen seleccionada:") || generate.IsEnabled || IsActive || preview.Source is null) throw new Exception("La edición no conserva la referencia/vista previa o inicia procesos.");
+        if (reference != file || !referenceLabel.Text.Contains("Imagen seleccionada") || generate.IsEnabled || IsActive || preview.Source is null) throw new Exception("La edición no conserva la referencia/vista previa o inicia procesos.");
         clear.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         if (reference is not null || task.SelectedIndex != 0 || !File.Exists(file)) throw new Exception("Imagen nueva no separa la referencia o borró la creación.");
-        preparing = true; Refresh();
-        if (cancel.Visibility != Visibility.Visible || !Equals(cancel.Content, "Pausar descarga")) throw new Exception("Falta la pausa accesible en el modo visual.");
-        preparing = false; loading = true; Refresh();
-        if (cancel.Visibility != Visibility.Visible || !Equals(cancel.Content, "Cancelar")) throw new Exception("Falta la cancelación del arranque visual.");
-        loading = false; Refresh();
-        if (cancel.Visibility != Visibility.Collapsed || gallery.Visibility != Visibility.Collapsed || emptyGallery.Visibility != Visibility.Visible) throw new Exception("El estado inicial muestra controles o galería vacíos.");
+        if (gallery.Visibility != Visibility.Collapsed || emptyGallery.Visibility != Visibility.Visible || creationHint.Visibility != Visibility.Visible) throw new Exception("El estado inicial no explica cómo empezar.");
         task.SelectedIndex = 2; size.SelectedIndex = 2; Refresh();
         if (!animationFormats || !size.IsEnabled || !size.Items[2].ToString()!.Contains("448 × 768") || animationHint.Visibility != Visibility.Visible) throw new Exception("La orientación de la animación no se puede elegir.");
         task.SelectedIndex = 0; Refresh();

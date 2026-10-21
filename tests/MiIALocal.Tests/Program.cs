@@ -132,6 +132,14 @@ await Rtx3090Tests.RunAsync(root, Assert, Test);
 await GitHubTests.RunAsync(root, Assert, Test);
 await VisualTests.RunAsync(root, Assert, Test);
 
+await Test("VRAM: valores reales, memoria reservada y mediciones inválidas", () =>
+{
+    var sample = HardwareDetector.ParseMemory("16384, 8192, 7168\r\n");
+    Assert(sample.UsedMiB == 8192 && sample.FreeMiB == 7168 && sample.UsedPercent == 50, "Se atribuye la memoria reservada al uso real.");
+    foreach (var invalid in new[] { "N/A, N/A, N/A", "0, 0, 0", "16000, -1, 1000", "16000, 9000, 9000", "16000, 9000", "16000, 9000, 7000\n16000, 0, 16000" })
+    { try { HardwareDetector.ParseMemory(invalid); throw new Exception("Se aceptó una medición inválida."); } catch (InvalidDataException) { } }
+    return Task.CompletedTask;
+});
 await Test("Hardware: admitir solo las tres placas de escritorio con su memoria", () =>
 {
     var names = new[] { "NVIDIA GeForce RTX 5080", "NVIDIA GeForce RTX 5070 Ti", "NVIDIA GeForce RTX 5080 Laptop GPU", "NVIDIA GeForce RTX 5070 Ti Laptop GPU", "NVIDIA GeForce RTX 5070", "NVIDIA GeForce RTX 5090", "NVIDIA GeForce RTX 3090", "NVIDIA GeForce RTX 3090 Ti" };

@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.5.
+21 de octubre de 2026 · desarrollo 0.3.6.
+
+## Interfaz compartida y VRAM 0.3.6
+
+- Programación e imágenes comparten Iniciar IA y Detener arriba a la derecha. Pausar/Cancelar también queda en el encabezado, accesible durante cualquier operación. No hay un segundo botón de inicio en la pantalla visual.
+- Modelos y descargas plegados cuando están preparados; descripción, acción principal y resultado visibles en la ventana habitual. Ayuda según Crear/Editar/Animar; selección de imagen cerca de la descripción y opciones de referencia solo donde se usan.
+- VRAM usada/libre y barra de ocupación en ambos modos, consulta cada cuatro segundos también mientras se genera. Valores de NVIDIA para la placa completa, incluyendo otras aplicaciones; no se atribuye ese total solo a la IA. Memoria reservada no se cuenta como usada; mediciones inválidas se muestran como no disponibles, sin inventar ceros. Consulta cancelable y sin solapamientos.
+- Pruebas de regresión del encabezado, modos, cierre, cancelación y mediciones; revisión de interfaz real y cambio de modo. La prueba física de esta PC corresponde a RTX 5080; no valida 5070 Ti ni 3090.
+- Prueba desde la interfaz: inicio, imagen de ejemplo completada y animación de esa imagen completada. GIF y MP4 decodificados con 73 fotogramas a 576×576 y MP4 a 24 FPS. Durante el trabajo se observaron lecturas de 9,4 GiB usados/6,2 libres (imagen) y 14,2/1,4 (video); son muestras del total de la placa, no picos certificados ni consumo exclusivo de Forja. Se revisaron también el diálogo Guardar y el rechazo del cierre.
 
 ## Nombre y descripción del personaje 0.3.5
 

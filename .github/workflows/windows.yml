@@ -99,7 +99,9 @@ jobs:
 
             0.3.5: separa el nombre del personaje de descripciones como la elfa del anime o the elf. Conserva nombres compuestos y el pedido de la escena. Refuerza identidad al generar con referencia y muestra si se utilizo una imagen o se continuo sin ella. Prueba puntual en RTX 5080 completada con el pedido original de Frieren y referencia registrada; sin garantia de identidad perfecta ni validacion general de las otras placas.
 
-            MODO VISUAL EXPERIMENTAL: comprobados protocolo simulado, referencia, persistencia, autenticacion, GIF sintetico, extraccion 7z y ventanas. Inferencia real, descarga/extraccion del motor completo, VRAM/RAM y velocidad pendientes en las tres placas. No anunciar estos flujos como validados fisicamente.
+            0.3.6: Iniciar IA, Detener y Pausar/Cancelar compartidos arriba a la derecha en ambos modos. Pantalla visual mas compacta, modelos plegados y ayudas segun la accion. Indicador de VRAM usada y libre con barra, actualizado cada cuatro segundos incluso durante la generacion; muestra el total de la placa, incluyendo otras aplicaciones. Prueba desde la interfaz en RTX 5080: imagen y animacion completadas, GIF/MP4 de 73 fotogramas a 576x576 comprobados. Se conservan modelos, ajustes e historial.
+
+            MODO VISUAL EXPERIMENTAL: comprobados protocolo simulado, referencia, persistencia, autenticacion, GIF sintetico, extraccion 7z y ventanas. Pruebas puntuales de imagen, animacion y VRAM completadas en RTX 5080; pendientes la validacion fisica en 5070 Ti/3090, instalacion limpia y uso prolongado.
 
             Incluye Setup y ZIP portable, tema oscuro, configuracion avanzada, perfiles automaticos para cada placa y actualizador. Motor NInfer nativo Windows basado en el fork de Todd Ballinger; modelo oficial Qwen3.8-27B de 16,5 GB descargado desde el programa. No incluye pesos en el instalador.
 

@@ -21,6 +21,9 @@ public partial class MainWindow : Window
     private readonly VisualPane visualPane;
     private bool switchingWorkspace;
     private readonly DispatcherTimer healthTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer memoryTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+    private readonly CancellationTokenSource memoryLifetime = new();
+    private bool readingMemory;
     private HardwareReport? hardware;
     private CancellationTokenSource? operation;
     private TaskCompletionSource? operationFinished;
@@ -34,8 +37,7 @@ public partial class MainWindow : Window
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
         visualPane = new(paths, () => settings, http, () => hardware?.SelectedGpu, RunOperationAsync,
             message => StatusLabel.Text = message, () => UpdateConfigurationSummary(), p =>
-            { if (closing) return; StatusLabel.Text = p.Stage.Split(" · hasta", StringSplitOptions.None)[0]; Progress.IsIndeterminate = p.Percentage is null; if (p.Percentage is { } percent) Progress.Value = percent; DetailLabel.Text = p.Stage.StartsWith("Generando") ? "El modo visual trabaja sin Qwen de programación ni OpenCode." : p.TransferDetails; },
-            () => StartButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)), () => Cancel_Click(this, new RoutedEventArgs()));
+            { if (closing) return; StatusLabel.Text = p.Stage.Split(" · hasta", StringSplitOptions.None)[0]; Progress.IsIndeterminate = p.Percentage is null; if (p.Percentage is { } percent) Progress.Value = percent; DetailLabel.Text = p.Stage.StartsWith("Generando") ? "Tu creación se está procesando en este equipo." : p.TransferDetails; });
         VisualContainer.Children.Add(visualPane);
         LicenseCheck.IsChecked = settings.LicenseAccepted;
         runtime.StateChanged += (_, message) => Dispatcher.Invoke(() => { StatusLabel.Text = message; UpdateConfigurationSummary(); });
@@ -161,6 +163,8 @@ public partial class MainWindow : Window
             }
         };
         healthTimer.Start(); Closing += Window_Closing;
+        memoryTimer.Tick += async (_, _) => await RefreshMemoryAsync(); memoryTimer.Start();
+        Closed += (_, _) => { memoryTimer.Stop(); memoryLifetime.Cancel(); memoryLifetime.Dispose(); };
         UpdateConfigurationSummary(); synchronizingProfile = false;
     }
     private async Task SmokeChatAsync(string folder)
@@ -281,7 +285,7 @@ public partial class MainWindow : Window
             ApplyHardwareProfile();
             GpuLabel.Text = hardware.SelectedGpu?.Profile ?? hardware.Gpus.FirstOrDefault()?.Name ?? "No se detectó una placa NVIDIA";
             RamLabel.Text = $"{hardware.RamGiB:0.0} GiB de RAM · Windows {Environment.OSVersion.Version.Build}";
-            StatusLabel.Text = hardware.Problem ?? (provisioner.IsPrepared(settings) ? "Tu IA está preparada. Elegí un proyecto e iniciá." : "Equipo compatible con el perfil. Prepará la IA para empezar.");
+            StatusLabel.Text = hardware.Problem ?? (settings.Mode == AppMode.Visual ? visualPane.IsPrepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : "Descargá los modelos para empezar a crear." : provisioner.IsPrepared(settings) ? "Tu IA está preparada. Elegí un proyecto e iniciá." : "Equipo compatible con el perfil. Prepará la IA para empezar.");
             DetailLabel.Text = hardware.Problem is null
                 ? $"{hardware.SelectedGpu!.Profile} · contexto {settings.ContextTokens / 1024}K · {(hardware.SelectedGpu.IsRtx3090 ? "perfil pendiente de validación física" : "perfil de desarrollo") }"
                 : "La descarga permanece deshabilitada en equipos fuera del alcance.";
@@ -290,6 +294,24 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { StatusLabel.Text = ex.Message; GpuLabel.Text = "No se pudo comprobar la placa"; LogError(ex); }
         RefreshControls();
+        await RefreshMemoryAsync();
+    }
+    private async Task RefreshMemoryAsync()
+    {
+        if (readingMemory || closing || exiting || memoryLifetime.IsCancellationRequested || hardware?.SelectedGpu is not { } gpu) return;
+        readingMemory = true;
+        try
+        {
+            var sample = await HardwareDetector.ReadMemoryAsync(gpu.Index, memoryLifetime.Token);
+            if (closing) return;
+            VramUsage.Text = $"En uso: {sample.UsedMiB / 1024d:0.0} GiB · Libre: {sample.FreeMiB / 1024d:0.0} GiB";
+            VramBar.Value = sample.UsedPercent; VramBar.Visibility = Visibility.Visible;
+            VramTotal.Text = $"Total: {sample.TotalMiB / 1024d:0.0} GiB · incluye todas las aplicaciones";
+        }
+        catch (OperationCanceledException) when (closing || memoryLifetime.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException)
+        { if (!closing) { VramUsage.Text = "Medición de VRAM no disponible"; VramBar.Visibility = Visibility.Collapsed; VramTotal.Text = "Se volverá a intentar automáticamente."; } }
+        finally { readingMemory = false; }
     }
     private void RefreshControls()
     {
@@ -320,8 +342,8 @@ public partial class MainWindow : Window
         visualPane.SetAvailable(available, compatible);
         if (visual)
         {
-            StartButton.IsEnabled = available && compatible && visualPane.IsPrepared;
-            StartButton.Content = visualPane.IsReady ? "IA visual lista" : "Iniciar IA";
+            StartButton.IsEnabled = available && compatible && visualPane.IsPrepared && !visualPane.IsReady;
+            StartButton.Content = visualPane.IsReady ? "IA iniciada" : "Iniciar IA";
             StopButton.IsEnabled = available && visualPane.IsActive;
             ContextChoice.IsEnabled = AdvancedButton.IsEnabled = GitHubButton.IsEnabled = false;
         }
@@ -335,7 +357,10 @@ public partial class MainWindow : Window
             var context = settings.ContextTokens; var engine = settings.EngineMode;
             WorkspaceChoice.SelectedIndex = 1; RefreshControls();
             if (settings.Mode != AppMode.Visual || VisualContainer.Visibility != Visibility.Visible || WelcomePane.Visibility == Visibility.Visible || ProjectArea.Visibility != Visibility.Collapsed
-                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.IsEnabled || !ConfigurationSummary.Text.Contains("FLUX.2")) throw new Exception("No se aisló el espacio visual.");
+                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.Visibility != Visibility.Visible || StartButton.IsEnabled || !ConfigurationSummary.Text.Contains("FLUX.2")) throw new Exception("No se aisló el espacio visual con inicio visible y sin activar modelos faltantes.");
+            busy = true; RefreshControls();
+            if (CancelButton.Visibility != Visibility.Visible || WelcomePane.IsAncestorOf(CancelButton) || !Equals(CancelButton.Content, "Cancelar")) throw new Exception("La cancelación no es accesible desde el encabezado visual.");
+            busy = false; RefreshControls();
             visualPane.VerifyInterfaceForTests();
             WorkspaceChoice.SelectedIndex = 0; RefreshControls();
             if (settings.Mode != AppMode.Programming || VisualContainer.Visibility == Visibility.Visible || WelcomePane.Visibility != Visibility.Visible || settings.ContextTokens != context || settings.EngineMode != engine) throw new Exception("Se alteró programación al volver del modo visual.");
@@ -356,10 +381,10 @@ public partial class MainWindow : Window
         WelcomePane.Visibility = !visual && Chat.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         if (visual) Chat.Visibility = Visibility.Collapsed;
         VisualContainer.Visibility = visual ? Visibility.Visible : Visibility.Collapsed;
-        StartButton.Visibility = visual ? Visibility.Collapsed : Visibility.Visible;
+        StartButton.Visibility = Visibility.Visible;
         WorkspaceTitle.Text = visual ? "Tu espacio para crear imágenes" : "Tu espacio para construir";
         WorkspaceDescription.Text = visual ? "Imágenes, cambios y animaciones, con la IA en tu PC." : "Archivos, herramientas y Git, con la IA en tu PC.";
-        if (visual) DetailLabel.Text = "FLUX.2 Klein 4B · Wan opcional · una generación a la vez · sin contexto de programación";
+        DetailLabel.Text = visual ? "Creá imágenes, editá detalles o animá una imagen. Todo se procesa en tu equipo." : "Elegí un proyecto para trabajar con tus archivos y Git local.";
         visualPane.ReloadSettings(); UpdateConfigurationSummary();
     }
     private async void WorkspaceChoice_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -574,8 +599,16 @@ public partial class MainWindow : Window
     {
         if (!preparing && !visualPane.IsPreparing) preparationPaused = false;
         if (busy || closing) return; busy = true; operation = new(); operationFinished = new(TaskCreationOptions.RunContinuationsAsynchronously); Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true; RefreshControls();
-        try { await action(operation.Token); }
-        catch (OperationCanceledException) { StatusLabel.Text = preparationPaused ? "Preparación pausada. Pulsá Preparar / reanudar para continuar." : settings.Mode == AppMode.Visual ? "Acción visual cancelada. Las creaciones anteriores se conservan." : "Acción cancelada. La descarga parcial se conserva para reanudar."; }
+        try
+        {
+            await action(operation.Token);
+            if (settings.Mode == AppMode.Visual) DetailLabel.Text = visualPane.IsReady ? "La IA está lista para tu próxima creación." : "Podés iniciar la IA desde el botón de arriba a la derecha.";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusLabel.Text = preparationPaused ? settings.Mode == AppMode.Visual ? "Descarga pausada. Abrí Modelos y descargas para continuar." : "Preparación pausada. Pulsá Preparar / reanudar para continuar." : settings.Mode == AppMode.Visual ? "Acción visual cancelada. Las creaciones anteriores se conservan." : "Acción cancelada. La descarga parcial se conserva para reanudar.";
+            if (settings.Mode == AppMode.Visual) DetailLabel.Text = visualPane.IsReady ? "La IA sigue disponible para tu próximo pedido." : "Tus archivos se conservan. Podés volver a iniciar la IA cuando quieras.";
+        }
         catch (Exception ex) { LogError(ex); StatusLabel.Text = ex.Message; DetailLabel.Text = "Podés revisar Diagnóstico y reintentar. No se muestra un error de una operación anterior."; }
         finally { operation.Dispose(); operation = null; busy = false; Progress.Visibility = Visibility.Collapsed; RefreshControls(); operationFinished.TrySetResult(); }
     }
@@ -789,7 +822,7 @@ public partial class MainWindow : Window
             "Cerrar Forja 50", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
         if (!confirmed)
         { pendingInstaller = null; closing = false; RefreshControls(); return; }
-        operation?.Cancel(); healthTimer.Stop();
+        operation?.Cancel(); healthTimer.Stop(); memoryTimer.Stop(); memoryLifetime.Cancel();
         try
         {
             if (operationFinished is { } pending) await pending.Task;
