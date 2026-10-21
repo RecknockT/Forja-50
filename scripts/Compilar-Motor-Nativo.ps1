@@ -1,10 +1,16 @@
 #Requires -Version 7
-param([string]$WorkRoot = (Join-Path (Split-Path $PSScriptRoot -Parent) '.tools/native-build'), [int]$Jobs = 2)
+param([string]$WorkRoot = (Join-Path (Split-Path $PSScriptRoot -Parent) '.tools/native-build'), [ValidateRange(1,8)][int]$Jobs = 4)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'Native-Build-Helpers.ps1')
 $lock = Get-Content (Join-Path $projectRoot 'build/ninfer-windows.lock.json') -Raw | ConvertFrom-Json
 $WorkRoot = [IO.Path]::GetFullPath($WorkRoot)
 New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
+foreach ($command in 'git','cmake','ninja') { Get-Command $command -ErrorAction Stop | Out-Null }
+foreach ($notice in 'NInfer-Apache-2.0.txt','cpp-httplib.txt','nlohmann-json.txt','utf8proc.txt','NVIDIA-LICENSE') {
+    if (!(Test-Path -LiteralPath (Join-Path $projectRoot "licenses/ninfer-native/$notice") -PathType Leaf)) { throw "Falta el aviso $notice antes de compilar." }
+}
+if ($lock.DependencyTriplet -ne 'x64-windows-release' -or $lock.DependencyBuildType -ne 'release') { throw 'Perfil de dependencias no admitido.' }
 function Run([string]$exe, [string[]]$arguments) {
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "Falló $exe ($LASTEXITCODE)" }
@@ -29,6 +35,8 @@ $vcvars = Join-Path $vs 'VC/Auxiliary/Build/vcvars64.bat'
 $environmentCommand = '"' + $vcvars + '" -vcvars_ver=14.44 >nul && set'
 & cmd.exe /d /s /c $environmentCommand | ForEach-Object { if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1],$matches[2],'Process') } }
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo cargar MSVC 14.44.' }
+$crtDirectory = Resolve-NativeVcRuntime -VisualStudioRoot $vs -PreferredDirectory $env:VCToolsRedistDir
+Write-Output "Runtime MSVC comprobado antes de compilar: $crtDirectory"
 $sdk = Join-Path $WorkRoot 'cuda'
 New-Item -ItemType Directory -Path $sdk -Force | Out-Null
 foreach ($asset in $lock.CudaArchives) {
@@ -52,18 +60,16 @@ Run $nvcc @('--version')
 Run (Join-Path $vcpkg 'bootstrap-vcpkg.bat') @('-disableMetrics')
 $env:VCPKG_MAX_CONCURRENCY = "$Jobs"
 $env:VCPKG_DISABLE_METRICS = '1'
-Run (Join-Path $vcpkg 'vcpkg.exe') @('install','ffmpeg[core,avcodec,avformat,swscale]:x64-windows','curl[core,ssl]:x64-windows','--clean-after-build')
-$prefix = Join-Path $vcpkg 'installed/x64-windows'
-$build = Join-Path $WorkRoot 'build'
-Run cmake @('-S',$source,'-B',$build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DCMAKE_CUDA_ARCHITECTURES=120a',"-DCMAKE_CUDA_COMPILER=$nvcc", "-DCUDAToolkit_ROOT=$sdk", "-DNINFER_FFMPEG_ROOT=$prefix", "-DNINFER_CURL_ROOT=$prefix",'-DBUILD_TESTING=OFF','-DNINFER_BUILD_BENCHMARKS=OFF')
-Run cmake @('--build',$build,'--parallel',"$Jobs",'--target','ninfer-serve')
+Run (Join-Path $vcpkg 'vcpkg.exe') @('install','ffmpeg[core,avcodec,avformat,swscale]:x64-windows-release','curl[core,ssl]:x64-windows-release',"--overlay-triplets=$projectRoot/build/vcpkg-triplets",'--clean-after-build')
+$prefix = Join-Path $vcpkg 'installed/x64-windows-release'
+# Check every external packaging input before the expensive CUDA compilation.
 $package = Join-Path $WorkRoot 'package'
 New-Item -ItemType Directory -Path $package -Force | Out-Null
-Copy-Item (Join-Path $build 'apps/ninfer-serve.exe') $package
+$cudaRuntime = @(Get-ChildItem $sdk -Filter 'cudart64*.dll' -Recurse)
+if ($cudaRuntime.Count -eq 0) { throw 'Falta cudart64 en el SDK descargado.' }
 Get-ChildItem (Join-Path $prefix 'bin') -Filter '*.dll' | Copy-Item -Destination $package
-Get-ChildItem $sdk -Filter 'cudart64*.dll' -Recurse | Copy-Item -Destination $package
-$crt = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Directory | Sort-Object Name -Descending | Select-Object -First 1
-Get-ChildItem (Join-Path $crt.FullName 'x64/Microsoft.VC143.CRT') -Filter '*.dll' | Copy-Item -Destination $package
+$cudaRuntime | Copy-Item -Destination $package
+Get-ChildItem -LiteralPath $crtDirectory -Filter '*.dll' | Copy-Item -Destination $package
 $licenses = Join-Path $package 'licenses'
 New-Item -ItemType Directory -Path $licenses -Force | Out-Null
 Copy-Item -Path (Join-Path $projectRoot 'licenses/ninfer-native/*') -Destination $licenses -Force
@@ -73,9 +79,20 @@ foreach ($port in Get-ChildItem (Join-Path $prefix 'share') -Directory) {
 }
 Get-ChildItem $sdk -Filter '*LICENSE*' -File -Recurse | ForEach-Object { Copy-Item $_.FullName (Join-Path $licenses ('CUDA-'+$_.Name)) -Force }
 Copy-Item (Join-Path $projectRoot 'build/ninfer-windows.lock.json') (Join-Path $package 'source.json')
+Copy-Item (Join-Path $projectRoot 'build/vcpkg-triplets/x64-windows-release.cmake') (Join-Path $package 'dependency-triplet.cmake')
+foreach ($pattern in 'avcodec*.dll','avformat*.dll','avutil*.dll','swscale*.dll','*curl*.dll','cudart64*.dll','vcruntime140.dll','msvcp140.dll') {
+    if (!(Get-ChildItem -LiteralPath $package -Filter $pattern -File)) { throw "Falta dependencia $pattern antes de compilar CUDA." }
+}
+$probeZip = Join-Path $WorkRoot 'packaging-preflight.zip'
+Compress-Archive -Path (Join-Path $package '*') -DestinationPath $probeZip -Force
+Write-Output 'Dependencias, licencias y escritura de ZIP comprobadas. Iniciando compilación CUDA.'
+$build = Join-Path $WorkRoot 'build'
+Run cmake @('-S',$source,'-B',$build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DCMAKE_CUDA_ARCHITECTURES=120a',"-DCMAKE_CUDA_COMPILER=$nvcc", "-DCUDAToolkit_ROOT=$sdk", "-DNINFER_FFMPEG_ROOT=$prefix", "-DNINFER_CURL_ROOT=$prefix",'-DBUILD_TESTING=OFF','-DNINFER_BUILD_BENCHMARKS=OFF')
+Run cmake @('--build',$build,'--parallel',"$Jobs",'--target','ninfer-serve')
+Copy-Item (Join-Path $build 'apps/ninfer-serve.exe') $package
 # --help parses CLI and loads DLLs; no model argument, no GPU inference.
 $help = & (Join-Path $package 'ninfer-serve.exe') --help 2>&1 | Out-String
-if ($help -notmatch '--max-context' -or $help -notmatch '--api-key' -or $help -notmatch '--embedding-host') { throw "El ejecutable no pudo mostrar sus opciones: $help" }
+if ($LASTEXITCODE -ne 0 -or $help -notmatch '--max-context' -or $help -notmatch '--api-key' -or $help -notmatch '--embedding-host') { throw "El ejecutable no pudo mostrar sus opciones: $help" }
 $help | Set-Content (Join-Path $package 'help.txt') -Encoding utf8
 $name = 'ninfer-native-windows-sm120a-' + $lock.SourceCommit.Substring(0,7) + '.zip'
 $zip = Join-Path $WorkRoot $name

@@ -3,6 +3,8 @@
   "SourceCommit": "aee91065f4d3635a07d681800f87829e18f0e227",
   "ParentProject": "https://github.com/toddballinger/ninfer-5080",
   "VcpkgCommit": "857036234d15fbed8f30fed66e898d7725446c0c",
+  "DependencyTriplet": "x64-windows-release",
+  "DependencyBuildType": "release",
   "CudaVersion": "13.4.1",
   "Architecture": "120a",
   "GpuInferenceTested": false,
