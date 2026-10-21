@@ -12,6 +12,8 @@
 - Medición acotada de los mismos 64 MiB en esta conexión: una conexión 18,79 MB/s (3,58 s); dieciséis 24,18 MB/s (2,78 s). No es un benchmark del archivo completo ni una velocidad garantizada.
 - Vista previa nativa y configuración inicial revisadas con datos aislados, sin cargar el modelo ni iniciar inferencia.
 - Motor Windows compilado y publicado desde la revisión aee9106. Paquete de 243.616.338 bytes verificado por tamaño, SHA-256, procedencia y licencias; `ninfer-serve.exe --help` aprobado en esta PC sin cargar pesos. Preparación automática integrada, con importación opcional y restauración al motor administrado.
+- [v0.2.0-dev publicada](https://github.com/RecknockT/Mi-IA-Local/releases/tag/v0.2.0-dev): Setup, portable y manifiesto generados desde `cd74f748f1cdf28bfad3ebd4e86f054d342b8ad1`, con los controles de main y etiqueta aprobados. Se descargaron los tres assets y se verificaron tamaño, SHA-256 y coincidencia con el manifiesto.
+- Portable publicado abierto con datos nuevos: motor nativo seleccionado, 64K y visión apagada; sin pesos incluidos ni inferencia. El actualizador público detectó tanto Setup como portable de 0.2.0-dev con sus hashes. El Setup nuevo fue compilado y verificado, pero no se instaló sobre la instalación manual del usuario.
 - Prueba física de inferencia del nuevo backend: pendiente por pedido del usuario en ambas placas. Los resultados históricos de abajo corresponden a KVMem/Swift.
 
 ## Pendientes de producto
