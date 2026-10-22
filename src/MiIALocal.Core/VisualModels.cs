@@ -57,18 +57,28 @@ public static class VisualCatalog
 public sealed record PreparedPrompt(string Text, string? StagedReference, double PreparationSeconds = 0);
 
 /// <summary>
-/// Editing follows the chosen image, as HiDream's official edit workflow does (its latent size
-/// comes from the reference). Upscaling a small image or padding bars produced artifacts.
+/// HiDream-O1 is trained at roughly 4 megapixels (2048x2048 and the resolutions listed by its
+/// own latent node). A single reference defines the framing, so the canvas takes its aspect
+/// ratio snapped to the closest trained resolution: keeping the raw thumbnail size (about
+/// 0.6 MP) leaves the model off-distribution and the output comes out as noise.
 /// </summary>
 public static class VisualSizes
 {
-    public static (int Width, int Height) ForEdit(int width, int height)
+    public static readonly (int Width, int Height)[] Trained = [
+        (2048, 2048), (2304, 1728), (2304, 1792), (2496, 1664), (2560, 1440), (3104, 1312),
+        (1728, 2304), (1792, 2304), (1664, 2496), (1440, 2560), (1312, 3104)];
+
+    public static (int Width, int Height) ForReference(int width, int height)
     {
-        if (width < 1 || height < 1) return (1024, 1024);
-        var scale = Math.Min(1.0, 2048.0 / Math.Max(width, height));
-        var w = Math.Clamp((int)Math.Round(width * scale) / 32 * 32, 256, 2048);
-        var h = Math.Clamp((int)Math.Round(height * scale) / 32 * 32, 256, 2048);
-        return (w, h);
+        if (width < 1 || height < 1) return (2048, 2048);
+        var aspect = Math.Log((double)width / height);
+        var best = Trained[0]; var distance = double.MaxValue;
+        foreach (var candidate in Trained)
+        {
+            var current = Math.Abs(Math.Log((double)candidate.Width / candidate.Height) - aspect);
+            if (current < distance) { distance = current; best = candidate; }
+        }
+        return best;
     }
 }
 
@@ -77,8 +87,12 @@ public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, in
     public void Validate()
     {
         if (!Enum.IsDefined(Task) || string.IsNullOrWhiteSpace(Prompt) || Prompt.Length > 6000) throw new InvalidDataException("Escribí una descripción de hasta 6000 caracteres.");
-        var maximum = Task == VisualTask.Animation ? 832 : 2048;
-        if (Width < 256 || Height < 256 || Width > maximum || Height > maximum || Width % 32 != 0 || Height % 32 != 0)
+        if (Task == VisualTask.Animation)
+        {
+            if (Width < 256 || Height < 256 || Width > 832 || Height > 832 || Width % 32 != 0 || Height % 32 != 0)
+                throw new InvalidDataException("La resolución supera el perfil visual o no es múltiplo de 32.");
+        }
+        else if (Width < 256 || Height < 256 || Width > 3104 || Height > 3104 || Width % 32 != 0 || Height % 32 != 0 || (long)Width * Height > 2048L * 2048)
             throw new InvalidDataException("La resolución supera el perfil visual o no es múltiplo de 32.");
         if (Seed < 0 || Seed > 9007199254740991L) throw new InvalidDataException("Semilla fuera de rango.");
         if (Frames is < 25 or > 121 || Frames % 4 != 1 || Steps is < 10 or > 30) throw new InvalidDataException("Duración o pasos de animación fuera del perfil.");

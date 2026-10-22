@@ -89,7 +89,9 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
-            0.4.5: con una unica imagen de referencia el resultado usa su tamano y su encuadre, al editar y al crear con referencia, como el flujo oficial de HiDream; una portada o un paisaje ancho ya no se copia como escena con el personaje chico. El asistente no inventa un paisaje cuando solo se pide un sujeto: mantiene al sujeto protagonista en un plano medio o cercano con fondo simple. Sin modelos ni GPU en CI; validacion fisica pendiente.
+            0.4.6: corrige el ruido de 0.4.5. Con una referencia, el lienzo toma su proporcion ajustada a la resolucion entrenada mas cercana (~4 MP) en lugar del tamano exacto de la miniatura, que dejaba al modelo fuera de distribucion. Se conserva el encuadre y el presupuesto de pixeles. Sin modelos ni GPU en CI; validacion fisica pendiente.
+
+            0.4.5: con una unica imagen de referencia el resultado usa su tamano y su encuadre, al editar y al crear con referencia, como el flujo oficial de HiDream; una portada o un paisaje ancho ya no se copia como escena con el personaje chico. El asistente no inventa un paisaje cuando solo se pide un sujeto. Sin modelos ni GPU en CI; validacion fisica pendiente.
 
             0.4.4: el nombre pedido ya no se pierde. El detector conserva nombres en frases naturales y, si el asistente lo omite, Forja antepone el nombre (o el titulo de la referencia elegida) a la descripcion preparada. Editar usa el tamano y el encuadre de la imagen elegida, como el flujo oficial de HiDream, en lugar de agrandarla y rellenarla con bordes. Sin modelos ni GPU en CI; validacion fisica pendiente.
 

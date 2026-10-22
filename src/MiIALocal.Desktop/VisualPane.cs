@@ -245,7 +245,7 @@ public sealed class VisualPane : UserControl
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
-        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar. El resultado conserva su tamaño y encuadre.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
+        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar. El resultado conserva su encuadre, en una resolución entrenada.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
         referenceActions.Visibility = Visibility.Visible;
         useIdentity.Visibility = task.SelectedIndex == 0 && reference is not null ? Visibility.Visible : Visibility.Collapsed;
         clear.Visibility = reference is null ? Visibility.Collapsed : Visibility.Visible;
@@ -323,7 +323,7 @@ public sealed class VisualPane : UserControl
             // A single reference defines the framing, as HiDream's official workflow does: the model
             // copies a wide reference (a series cover, a landscape) when the target is padded to another shape.
             if (kind != VisualTask.Animation && chosenReference is not null && referencePixels is { } frame)
-            { (width, height) = VisualSizes.ForEdit(frame.Width, frame.Height); request = request with { Width = width, Height = height }; request.Validate(); }
+            { (width, height) = VisualSizes.ForReference(frame.Width, frame.Height); request = request with { Width = width, Height = height }; request.Validate(); }
             PreparedPrompt? prepared = null;
             if (visual.EnhancePrompt)
             {

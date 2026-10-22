@@ -55,8 +55,12 @@ static class VisualTests
         await test("HiDream: editar usa el programador de flujo sin la reinyección de ruido", () =>
         {
             var prefix = new string('a', 32);
-            assert(VisualSizes.ForEdit(1024, 1024) == (1024, 1024) && VisualSizes.ForEdit(3000, 2000) == (2048, 1344) && VisualSizes.ForEdit(200, 300) == (256, 288), "El tamaño de edición no sigue a la imagen elegida.");
-            assert(VisualSizes.ForEdit(4000, 1000) == (2048, 512), "El tamaño de edición no limita el lado mayor.");
+            assert(VisualSizes.ForReference(1024, 1024) == (2048, 2048) && VisualSizes.ForReference(1024, 576) == (2560, 1440)
+                && VisualSizes.ForReference(1024, 1536) == (1664, 2496) && VisualSizes.ForReference(3000, 2000) == (2496, 1664),
+                "El tamaño con referencia no usa el régimen entrenado ni su encuadre.");
+            assert(VisualSizes.ForReference(4000, 1000) == (3104, 1312) && VisualSizes.ForReference(0, 0) == (2048, 2048), "Falta el encuadre más cercano o el valor por defecto.");
+            new VisualRequest(VisualTask.Image, "x", 2560, 1440, 1).Validate();
+            try { new VisualRequest(VisualTask.Image, "x", 2112, 2048, 1).Validate(); throw new Exception("Se aceptó un presupuesto de píxeles mayor al entrenado."); } catch (InvalidDataException) { }
             var edit = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá solo el brazo", 1024, 1024, 42), prefix, "reference.png"));
             assert(edit.GetProperty("9").GetProperty("class_type").GetString() == "KSamplerSelect", "La edición conserva el muestreador destilado.");
             assert(edit.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "euler", "La edición no usa Euler de flujo.");

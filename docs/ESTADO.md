@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.5.
+22 de octubre de 2026 · desarrollo 0.4.6.
+
+## Resolución entrenada con referencia · 0.4.6
+
+- Corrige el ruido introducido en 0.4.5: usar el tamaño exacto de la referencia (una miniatura de Wikipedia de ~0,6 MP) dejaba al modelo fuera de su régimen entrenado de ~4 MP. Ahora el lienzo toma la **proporción** de la referencia ajustada a la resolución entrenada más cercana (2048², 2304×1728, 2496×1664, 2560×1440, 3104×1312 y sus verticales), así que se conserva el encuadre sin perder calidad.
+- El límite de resolución admite esas resoluciones (lado hasta 3104) manteniendo el presupuesto de píxeles anterior: el área nunca supera 2048×2048. La animación conserva su tope de 832.
+- Pruebas: 90 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Pendiente la prueba física con «frieren (la elfa del anime)».
 
 ## Encuadre de la referencia · 0.4.5
 
