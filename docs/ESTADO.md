@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.8.
+22 de octubre de 2026 · desarrollo 0.4.9.
+
+## Diagnóstico de modelos faltantes · 0.4.9
+
+- El modo visual solo decía «descargá los modelos» y no permitía iniciar sin explicar qué faltaba. Ahora el panel nombra el archivo exacto y su tamaño («Falta descargar: HiDream-O1 Full · FP8 escalado para editar (8,1 GB)»), distingue el motor del modelo y, cuando lo único pendiente es el checkpoint Full, recuerda que se puede empezar con Dev desactivando «Editar con el modelo Full».
+- Se verificó el origen del checkpoint Full: la URL resuelve con tamaño 8.067.535.296 bytes y hash `05ad98bc…`, coincidentes con el catálogo; el bloqueo no era del archivo.
+- Pruebas: 92 del conjunto completo y la comprobación de ventana, sin modelos ni GPU.
 
 ## Asistente descriptivo: comparación y ajustes · 0.4.8
 

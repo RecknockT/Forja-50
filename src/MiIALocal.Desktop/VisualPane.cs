@@ -217,13 +217,25 @@ public sealed class VisualPane : UserControl
     public void SetAvailable(bool available, bool compatible)
     { this.available = available; this.compatible = compatible; Refresh(); }
     private void Save() { paths.SaveSettings(settings()); changed(); }
+    /// <summary>Say which file is missing instead of a generic "download the models".</summary>
+    private string MissingDescription()
+    {
+        if (provisioner.RuntimeMissing) return "Falta el motor visual ComfyUI (2,0 GB comprimidos). Pulsá Descargar y preparar.";
+        var missing = provisioner.Missing(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit);
+        if (missing.Length == 0) return "Modelos listos. Pulsá Iniciar IA arriba a la derecha.";
+        var detail = string.Join(" · ", missing.Select(m => m.Asset.Name + " (" + (m.Asset.Bytes!.Value / 1e9).ToString("0.0") + " GB)"));
+        var hint = missing.Length == 1 && missing[0] == VisualCatalog.HiDreamFull
+            ? " Pulsá Descargar y preparar, o desactivá «Editar con el modelo Full» para empezar con Dev."
+            : " Pulsá Descargar y preparar; lo descargado se reutiliza.";
+        return "Falta descargar: " + detail + "." + hint;
+    }
     private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
     private void Refresh()
     {
         var prepared = IsPrepared;
         prepare.IsEnabled = available && compatible && !IsActive;
         prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false) ? "Agregar animaciones" : "Comprobar / reparar";
-        setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después." : loading ? "Iniciando la IA…" : IsReady ? "IA iniciada. Elegí qué querés crear." : prepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : "Primero descargá los modelos. Después podrás iniciar la IA desde arriba a la derecha.";
+        setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después." : loading ? "Iniciando la IA…" : IsReady ? "IA iniciada. Elegí qué querés crear." : prepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : MissingDescription();
         setupStatus.Visibility = prepared && !preparing && !loading ? Visibility.Collapsed : Visibility.Visible;
         if (prepared && !wasPrepared && !preparing) downloads.IsExpanded = false;
         wasPrepared = prepared;

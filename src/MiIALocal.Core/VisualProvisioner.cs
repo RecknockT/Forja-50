@@ -7,9 +7,23 @@ namespace MiIALocal.Core;
 public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloader)
 {
     private string Marker => Path.Combine(paths.ComfyRoot, ".forja-" + VisualCatalog.Runtime.Sha256[..16]);
-    public bool IsPrepared(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) => File.Exists(Marker) && File.Exists(paths.ComfyPython)
-        && File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"))
-        && VisualCatalog.For(animation, gpu, assistant, fullEdit).All(m => File.Exists(VisualCatalog.PathFor(paths, m)) && new FileInfo(VisualCatalog.PathFor(paths, m)).Length == m.Asset.Bytes);
+    public bool IsPrepared(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) => !RuntimeMissing && Missing(animation, gpu, assistant, fullEdit).Length == 0;
+
+    /// <summary>Models that are still missing or incomplete, so the app can say which one blocks the start.</summary>
+    public VisualModel[] Missing(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
+    {
+        if (!File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"))) return [];
+        var missing = new List<VisualModel>();
+        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit))
+        {
+            var file = VisualCatalog.PathFor(paths, model);
+            if (!File.Exists(file) || new FileInfo(file).Length != model.Asset.Bytes) missing.Add(model);
+        }
+        return [.. missing];
+    }
+
+    /// <summary>True when the engine itself (not a model) is what is missing.</summary>
+    public bool RuntimeMissing => !File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"));
 
     public long RequiredFreeBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
     {

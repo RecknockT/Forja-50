@@ -426,6 +426,23 @@ static class VisualTests
             try { await new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture", () => false).PreparePromptAsync(request, null, null, default, false); throw new Exception("No se detectó el cierre del proceso."); }
             catch (IOException ex) { assert(ex.Message.Contains("se cerró"), "Falta el diagnóstico de cierre del motor."); }
         });
+        await test("Visual: la app informa qué modelo falta para iniciar", () =>
+        {
+            var paths = new AppPaths(Path.Combine(root, "visual-missing"));
+            var provisioner = new VisualProvisioner(paths, null!);
+            assert(provisioner.RuntimeMissing && !provisioner.IsPrepared(false), "Sin motor no debe figurar preparado.");
+            Directory.CreateDirectory(Path.Combine(paths.ComfyRoot, "ComfyUI"));
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ComfyPython)!);
+            File.WriteAllText(paths.ComfyPython, "x");
+            File.WriteAllText(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"), "x");
+            File.WriteAllText(Path.Combine(paths.ComfyRoot, ".forja-" + VisualCatalog.Runtime.Sha256[..16]), VisualCatalog.Runtime.Sha256);
+            assert(!provisioner.RuntimeMissing && !provisioner.IsPrepared(false), "Sin modelos no debe figurar preparado.");
+            var missing = provisioner.Missing(false, null, true, true);
+            assert(missing.Length == 3 && missing.Contains(VisualCatalog.HiDreamFull) && missing.Contains(VisualCatalog.PromptAssistant) && missing.Contains(VisualCatalog.HiDream), "No se informa qué falta descargar.");
+            assert(provisioner.Missing(false, null, true, false).Length == 2 && !provisioner.Missing(false, null, true, false).Contains(VisualCatalog.HiDreamFull), "Desactivar el modelo Full debe quitar su descarga.");
+            assert(provisioner.Missing(true, null, true, true).Contains(VisualCatalog.Wan), "La animación debe informar su modelo propio.");
+            return Task.CompletedTask;
+        });
         await test("Visual: no aceptar salidas fuera de la carpeta o de otro trabajo", () =>
         {
             var output = Path.Combine(root, "visual-escape"); Directory.CreateDirectory(output); var id = new string('e', 32);
