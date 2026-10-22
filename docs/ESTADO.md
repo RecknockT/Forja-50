@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.1.
+22 de octubre de 2026 · desarrollo 0.4.2.
+
+## Compatibilidad del dibujo de la interfaz · 0.4.2
+
+- Ante una captura con grandes bloques blancos y controles parcialmente visibles, la interfaz WPF usa renderizado por software desde el inicio. Es una mitigación del camino gráfico acelerado; la captura por sí sola no identifica el desencadenante ni el controlador responsable.
+- La preferencia se aplica solo al proceso de interfaz: no modifica el registro, los controladores, las descargas ni la ejecución CUDA de los motores. WebView2 conserva su configuración independiente.
+- La prueba de modos comprueba la preferencia en el proceso real. Las capturas internas comprueban el diseño; no sustituyen una comprobación de pantalla del usuario en las condiciones originales del fallo.
 
 ## Correcciones de HiDream y limpieza · 0.4.1
 

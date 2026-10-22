@@ -13,6 +13,9 @@ public partial class App : Application
     }
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Keep WPF controls out of the driver-dependent accelerated drawing path.
+        // This applies only to this UI process, not to the CUDA inference workers.
+        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         base.OnStartup(e); Arguments = e.Args;
         var portableRoot = File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.flag")) ? Path.Combine(AppContext.BaseDirectory, "datos") : null;
         var data = new AppPaths(Argument("--data-root") ?? portableRoot);

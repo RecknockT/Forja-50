@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.2: interfaz WPF con renderizado compatible por software para evitar el camino acelerado ante bloques blancos. No cambia la inferencia CUDA ni los modelos. Preferencia verificada por la prueba de modos; pendiente confirmar en pantalla bajo las condiciones del fallo.
+
             0.4.1: corregida la carga del asistente visual en GPU con ahorro de memoria, liberacion por etapas y limite de espera. Revision de descripcion sin repetir el asistente, tiempo de preparacion incluido y errores claros si el proceso se cierra. Almacenamiento permite cerrar durante el calculo sin bloquear la desinstalacion. Pruebas de nucleo, puente y ventanas; no se ejecuta inferencia en CI. Medicion del asistente corregido y validacion fisica 5070 Ti/3090 pendientes.
 
             0.4.0: HiDream-O1 Dev nativo, 28 pasos, descarga sin cuenta/token, FP8 escalado en RTX 5080/5070 Ti y BF16 en RTX 3090. Asistente visual local opcional por etapas. Referencias con vista previa e historial conservado. Resolucion hasta 2048 experimental. Validacion de 5070 Ti/3090 pendiente.

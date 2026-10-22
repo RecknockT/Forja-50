@@ -353,6 +353,8 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (RenderOptions.ProcessRenderMode != System.Windows.Interop.RenderMode.SoftwareOnly)
+                throw new Exception("La interfaz no inició con el renderizado compatible.");
             hardware = new([new(0, "NVIDIA GeForce RTX 5080", 16384, 15000, "fixture")], 32);
             var context = settings.ContextTokens; var engine = settings.EngineMode;
             WorkspaceChoice.SelectedIndex = 1; RefreshControls();
@@ -366,7 +368,7 @@ public partial class MainWindow : Window
             if (settings.Mode != AppMode.Programming || VisualContainer.Visibility == Visibility.Visible || WelcomePane.Visibility != Visibility.Visible || settings.ContextTokens != context || settings.EngineMode != engine) throw new Exception("Se alteró programación al volver del modo visual.");
             settings.Mode = AppMode.Visual; paths.SaveSettings(settings);
             if (paths.LoadSettings().Mode != AppMode.Visual || File.Exists(paths.AgentExe) || File.Exists(paths.ComfyPython)) throw new Exception("Se requiere instalar un motor para seleccionar modo.");
-            AppPaths.AtomicWrite(report, "{\"status\":\"PASS\",\"independentModes\":true,\"referenceEditing\":true,\"gpuStarted\":false}");
+            AppPaths.AtomicWrite(report, "{\"status\":\"PASS\",\"independentModes\":true,\"referenceEditing\":true,\"softwareRendering\":true,\"gpuStarted\":false}");
         }
         catch (Exception error) { AppPaths.AtomicWrite(report, System.Text.Json.JsonSerializer.Serialize(new { status = "FAIL", error = error.ToString() })); }
     }
