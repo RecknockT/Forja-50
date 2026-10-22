@@ -9,6 +9,8 @@ public sealed class VisualSettings
     public bool HiDreamLicenseAccepted { get; set; }
     public bool EnhancePrompt { get; set; } = true;
     public bool ReviewPreparedPrompt { get; set; } = true;
+    /// <summary>Editing uses the Full checkpoint, as its author recommends; adds ~8,1 GB.</summary>
+    public bool FullEdit { get; set; } = true;
     public bool IncludeAnimation { get; set; }
     public bool WebReferencesEnabled { get; set; } = true;
     public int Width { get; set; } = 2048;
@@ -34,6 +36,9 @@ public static class VisualCatalog
     public const string HiDreamRevision = "377ec7124bc46a15736c68cd9e4ad6d7da7a7614";
     public static readonly VisualModel HiDream = new(new("visual-hidream-dev-fp8", "HiDream-O1 Dev · FP8 escalado", $"https://huggingface.co/Comfy-Org/HiDream-O1-Image/resolve/{HiDreamRevision}/checkpoints/hidream_o1_image_dev_fp8_scaled.safetensors", "7cbf53a475e0a13f92f2ec08bcffdb9b9de4305ef3b6f35cdd784d09dcd8d0cc", "hidream_o1_image_dev_fp8_scaled.safetensors", 8067535296), "checkpoints");
     public static readonly VisualModel HiDreamBf16 = new(new("visual-hidream-dev-bf16", "HiDream-O1 Dev · BF16 para RTX 3090", $"https://huggingface.co/Comfy-Org/HiDream-O1-Image/resolve/{HiDreamRevision}/checkpoints/hidream_o1_image_dev_bf16.safetensors", "cede93912730dd046fd39a20af008344a7dce75dafabd16e419a222c3e504051", "hidream_o1_image_dev_bf16.safetensors", 16365209824), "checkpoints");
+    // The model author recommends the Full (undistilled) checkpoint for editing; the Comfy template
+    // runs it at 40 steps, CFG 5, ModelNoiseScale 8 and patch seam smoothing.
+    public static readonly VisualModel HiDreamFull = new(new("visual-hidream-full-fp8", "HiDream-O1 Full · FP8 escalado para editar", $"https://huggingface.co/Comfy-Org/HiDream-O1-Image/resolve/{HiDreamRevision}/checkpoints/hidream_o1_image_fp8_scaled.safetensors", "05ad98bc4a94557697f31b839f6dbf6dba293a353d9e3c52eef7818b5802d206", "hidream_o1_image_fp8_scaled.safetensors", 8067535296), "checkpoints");
     public static readonly VisualModel PromptAssistant = new(new("visual-gemma4-e4b-int8", "Asistente visual Gemma 4 E4B · INT8", "https://huggingface.co/Comfy-Org/gemma-4/resolve/63d0f7c476756b88910170c1df75e2384ea1af31/text_encoders/gemma4_e4b_it_int8_convrot.safetensors", "974d0c838ef4ac1a989b06ccb4e57691c21b6270dd8e345ffa7531f9388f117c", "gemma4_e4b_it_int8_convrot.safetensors", 8090965702), "text_encoders");
     public static VisualModel Checkpoint(GpuInfo? gpu) => gpu?.IsRtx3090 == true ? HiDreamBf16 : HiDream;
     // Retain legacy downloads in storage management; never delete them as part of migration.
@@ -44,12 +49,14 @@ public static class VisualCatalog
     public static readonly VisualModel Wan = Model("visual-wan", "Wan 2.2 5B · animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors", 9999658848, "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e");
     public static readonly VisualModel WanText = Model("visual-wan-text", "Codificador de animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors", 6735906897, "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68");
     public static readonly VisualModel WanVae = Model("visual-wan-vae", "Decodificador de animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "vae/wan2.2_vae.safetensors", 1409400960, "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156");
-    public static VisualModel[] Images => [HiDream, HiDreamBf16, PromptAssistant];
+    public static VisualModel[] Images => [HiDream, HiDreamBf16, HiDreamFull, PromptAssistant];
     public static VisualModel[] Animations => [Wan, WanText, WanVae];
     public static VisualModel[] All => [.. Images, .. Animations, .. Legacy, FluxVae];
-    public static VisualModel[] For(bool animation, GpuInfo? gpu = null, bool assistant = true) => [Checkpoint(gpu), .. assistant ? new[] { PromptAssistant } : [], .. animation ? Animations : []];
+    public static VisualModel[] For(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) =>
+        [Checkpoint(gpu), .. fullEdit && !animation ? new[] { HiDreamFull } : [], .. assistant ? new[] { PromptAssistant } : [], .. animation ? Animations : []];
     public static string PathFor(AppPaths paths, VisualModel model) => Path.Combine(paths.VisualModels, model.Folder, model.Asset.FileName);
-    public static long DownloadBytes(bool animation, GpuInfo? gpu = null, bool assistant = true) => Runtime.Bytes!.Value + For(animation, gpu, assistant).Sum(m => m.Asset.Bytes!.Value);
+    public static long DownloadBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) =>
+        Runtime.Bytes!.Value + For(animation, gpu, assistant, fullEdit).Sum(m => m.Asset.Bytes!.Value) + (fullEdit && animation ? HiDreamFull.Asset.Bytes!.Value : 0);
 
 }
 
@@ -82,7 +89,7 @@ public static class VisualSizes
     }
 }
 
-public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, int Height, long Seed, int Frames = 73, int Steps = 20, bool HighPrecision = false, bool EnhancePrompt = false)
+public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, int Height, long Seed, int Frames = 73, int Steps = 20, bool HighPrecision = false, bool EnhancePrompt = false, bool FullEdit = false)
 {
     public void Validate()
     {

@@ -113,6 +113,28 @@ static class VisualTests
             var text = await new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture").PreparePromptAsync(request, null, null, default, false, null, "Frieren (character)");
             assert(text.Contains("Frieren") && text.Contains("A generic elf"), "La descripción preparada perdió el nombre pedido.");
         });
+        await test("HiDream: editar con el modelo Full usa la receta oficial", () =>
+        {
+            var prefix = new string('a', 32);
+            var full = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá el brazo", 2048, 2048, 42, FullEdit: true), prefix, "reference.png"));
+            assert(full.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDreamFull.Asset.FileName, "La edición con Full no carga su checkpoint.");
+            assert(full.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 40 && full.GetProperty("11").GetProperty("inputs").GetProperty("cfg").GetDouble() == 5.0, "La edición con Full no usa 40 pasos y CFG 5.");
+            assert(full.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "dpmpp_2m_sde_gpu", "La edición con Full no usa el muestreador oficial.");
+            assert(full.GetProperty("5").GetProperty("class_type").GetString() == "CLIPTextEncode", "La edición con Full necesita rama negativa para CFG.");
+            assert(full.GetProperty("10").GetProperty("class_type").GetString() == "HiDreamO1PatchSeamSmoothing"
+                && full.GetProperty("10").GetProperty("inputs").GetProperty("passes").GetString() == "ramp_2_4"
+                && full.GetProperty("8").GetProperty("inputs").GetProperty("model")[0].GetString() == "10"
+                && full.GetProperty("11").GetProperty("inputs").GetProperty("model")[0].GetString() == "10", "La edición con Full no suaviza costuras.");
+            assert(full.GetProperty("7").GetProperty("inputs").GetProperty("noise_scale").GetDouble() == 8.0, "La edición con Full no usa la escala de ruido del modelo.");
+            var dev = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá el brazo", 2048, 2048, 42), prefix, "reference.png"));
+            assert(dev.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDream.Asset.FileName
+                && dev.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 28 && !dev.TryGetProperty("10", out _), "La edición sin Full no vuelve a Dev.");
+            var create = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 2048, 2048, 42, FullEdit: true), prefix));
+            assert(create.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDream.Asset.FileName, "Crear no debe cambiar de modelo.");
+            assert(VisualCatalog.For(false, null, false, true).Contains(VisualCatalog.HiDreamFull) && VisualCatalog.DownloadBytes(false, null, false, true) > VisualCatalog.DownloadBytes(false, null, false), "El perfil Full no entra en la descarga.");
+            assert(!VisualCatalog.For(true, null, false, true).Contains(VisualCatalog.HiDreamFull), "La animación no debe exigir el modelo Full.");
+            return Task.CompletedTask;
+        });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
         {
             var card = new GpuInfo(0, "NVIDIA GeForce RTX 3090", 24576, 24576, "fixture");
@@ -238,7 +260,8 @@ static class VisualTests
         });
         await test("Visual: catálogo completo fijado, animación opcional y sin Qwen/OpenCode", () =>
         {
-            assert(VisualCatalog.Images.Length == 3 && VisualCatalog.For(true).Length == 5 && VisualCatalog.Legacy.Length == 2, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
+            assert(VisualCatalog.Images.Length == 4 && VisualCatalog.For(true).Length == 5 && VisualCatalog.Legacy.Length == 2, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
+            assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 5, "El modelo Full para editar no se agrega al perfil.");
             foreach (var model in VisualCatalog.All)
             {
                 assert(model.Asset.Bytes > 0 && model.Asset.Sha256.Length == 64 && !model.Asset.Url.Contains("/main/"), "Modelo sin integridad o revisión fija.");

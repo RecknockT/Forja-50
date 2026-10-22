@@ -1,6 +1,14 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.6.
+22 de octubre de 2026 · desarrollo 0.4.7.
+
+## Edición con el modelo Full · 0.4.7
+
+- Comparación con las fuentes (repositorio del autor, plantillas de ComfyUI, nodos de la comunidad y una implementación MLX): la edición es el punto débil declarado de Dev; el autor recomienda el modelo **Full** para editar, y su plantilla oficial en ComfyUI usa 40 pasos, CFG 5, `ModelNoiseScale` 8, el muestreador `dpmpp_2m_sde_gpu` y **suavizado de costuras** (`HiDreamO1PatchSeamSmoothing`, activado por defecto en el flujo Full).
+- La edición ahora usa ese checkpoint y esa receta (FP8 escalado, 8,07 GB, revisión y hash fijados). Se puede volver a Dev desde la misma casilla; la animación no lo exige.
+- La comparación también confirma dos decisiones previas: el lienzo debe quedar en el régimen entrenado (~4 MP) porque por debajo de ~1,7 MP la edición no degrada, colapsa; y el programador de edición de Dev es `flow_match` (Euler de flujo), no el muestreador destilado.
+- Aviso al elegir una imagen pequeña para editar (menos de 1,7 MP).
+- Pruebas: 91 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Pendiente la prueba física de la edición con el modelo Full en las tres placas.
 
 ## Resolución entrenada con referencia · 0.4.6
 

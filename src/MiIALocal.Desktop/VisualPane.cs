@@ -30,6 +30,7 @@ public sealed class VisualPane : UserControl
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
     private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un asistente visual local (8,09 GB adicionales)" };
     private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
+    private readonly CheckBox fullEdit = new() { Content = "Editar con el modelo Full (recomendado por su autor; 8,1 GB y más lento)", FontSize = 12 };
     private readonly Button importModels = new() { Content = "Usar modelos HiDream ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
     private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Prueba rápida · 1024 píxeles (menos fiel)", "Equilibrada · 1536 píxeles", "Recomendada · 2048 píxeles" }, SelectedIndex = 2 };
     private readonly CheckBox webReferences = new() { Content = "Buscar personajes reconocibles en Wikipedia" };
@@ -73,8 +74,8 @@ public sealed class VisualPane : UserControl
     public bool IsReady => runtime.IsReady;
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
-    public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt);
-    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nHiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos\nCFG 1 · normal · Euler al editar · LCM al crear\nAsistente Gemma 4 E4B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
+    public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit);
+    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nCrear: HiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos · LCM\nEditar: {(settings().Visual.FullEdit ? "HiDream-O1 Full · FP8 · 40 pasos · CFG 5 · costuras" : "Dev · Euler de flujo · 28 pasos")}\nAsistente Gemma 4 E4B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
 
 
     public VisualPane(AppPaths paths, Func<AppSettings> settings, HttpClient http, Func<GpuInfo?> gpu,
@@ -118,6 +119,7 @@ public sealed class VisualPane : UserControl
         useIdentity.Margin = new(0, 0, 0, 10); editor.Children.Add(useIdentity);
         editor.Children.Add(new TextBlock { Text = "Tu descripción", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 8) }); prompt.MinHeight = 100; editor.Children.Add(prompt);
         reviewPreparedPrompt.Margin = new(0, 8, 0, 0); editor.Children.Add(reviewPreparedPrompt);
+        fullEdit.Margin = new(0, 8, 0, 0); editor.Children.Add(fullEdit);
         generate.HorizontalAlignment = HorizontalAlignment.Left; generate.MinWidth = 180; generate.Margin = new(0, 12, 0, 0); editor.Children.Add(generate); editor.Children.Add(creationHint);
         example.Click += (_, _) => prompt.Text = task.SelectedIndex switch { 1 => "Cambiá solo el brazo izquierdo a rojo. Conservá los demás detalles.", 2 => "El personaje saluda suavemente con la mano. Cámara fija.", _ => "Un pequeño robot blanco en un taller acogedor, iluminación cálida y estilo de ilustración 3D." }; editor.Children.Add(example);
         editor.Children.Add(new TextBlock { Text = "Formato", FontWeight = FontWeights.SemiBold, Margin = new(0, 6, 0, 8) });
@@ -154,6 +156,12 @@ public sealed class VisualPane : UserControl
             else if (enhancePrompt.IsChecked != true) status("Asistente desactivado: HiDream recibe tu descripción tal cual y conviene escribirla en inglés. Los archivos descargados se conservan.");
         };
         reviewPreparedPrompt.Click += (_, _) => { settings().Visual.ReviewPreparedPrompt = reviewPreparedPrompt.IsChecked == true; Save(); };
+        fullEdit.Click += (_, _) =>
+        {
+            settings().Visual.FullEdit = fullEdit.IsChecked == true; Save(); UpdatePackage(); Refresh();
+            if (fullEdit.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true, true)) status("La edición con el modelo Full necesita 8,1 GB. Pulsá Descargar y preparar antes de iniciar la IA; lo descargado se reutiliza.");
+            else status(fullEdit.IsChecked == true ? "La edición usa el modelo Full: 40 pasos, CFG 5 y suavizado de costuras." : "La edición vuelve a Dev: 28 pasos con Euler de flujo. El autor recomienda el modelo Full para editar.");
+        };
         animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); };
         license.Click += (_, _) => { settings().Visual.LicenseAccepted = settings().Visual.HiDreamLicenseAccepted = license.IsChecked == true; Save(); };
         importModels.Click += async (_, _) =>
@@ -163,7 +171,7 @@ public sealed class VisualPane : UserControl
             if (picker.ShowDialog(Window.GetWindow(this)) != true) return;
             await run(async ct => { await provisioner.ImportModelsAsync(picker.FileNames, new Progress<PreparationProgress>(progress), ct); status("Archivos importados y verificados. Pulsá Descargar y preparar para completar el motor y los componentes faltantes."); }); Refresh();
         };
-        task.SelectionChanged += (_, _) => { Refresh(); if (task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt)) status("Para animar, detené la IA, abrí Modelos y descargas y marcá la descarga de Wan. Después pulsá Descargar y preparar."); };
+        task.SelectionChanged += (_, _) => { Refresh(); if (task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false)) status("Para animar, detené la IA, abrí Modelos y descargas y marcá la descarga de Wan. Después pulsá Descargar y preparar."); };
         prepare.Click += async (_, _) =>
         {
             if (!available || !compatible) return;
@@ -197,7 +205,7 @@ public sealed class VisualPane : UserControl
     public void ReloadSettings()
     {
         var visual = settings().Visual;
-        enhancePrompt.IsChecked = visual.EnhancePrompt; reviewPreparedPrompt.IsChecked = visual.ReviewPreparedPrompt;
+        enhancePrompt.IsChecked = visual.EnhancePrompt; reviewPreparedPrompt.IsChecked = visual.ReviewPreparedPrompt; fullEdit.IsChecked = visual.FullEdit;
         imageQuality.SelectedIndex = visual.Width > 1536 || visual.Height > 1536 ? 2 : visual.Width > 1024 || visual.Height > 1024 ? 1 : 0;
         animation.IsChecked = visual.IncludeAnimation; license.IsChecked = visual.HiDreamLicenseAccepted;
         webReferences.IsChecked = visual.WebReferencesEnabled;
@@ -209,24 +217,26 @@ public sealed class VisualPane : UserControl
     public void SetAvailable(bool available, bool compatible)
     { this.available = available; this.compatible = compatible; Refresh(); }
     private void Save() { paths.SaveSettings(settings()); changed(); }
-    private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
+    private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
     private void Refresh()
     {
         var prepared = IsPrepared;
         prepare.IsEnabled = available && compatible && !IsActive;
-        prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt) ? "Agregar animaciones" : "Comprobar / reparar";
+        prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false) ? "Agregar animaciones" : "Comprobar / reparar";
         setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después." : loading ? "Iniciando la IA…" : IsReady ? "IA iniciada. Elegí qué querés crear." : prepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : "Primero descargá los modelos. Después podrás iniciar la IA desde arriba a la derecha.";
         setupStatus.Visibility = prepared && !preparing && !loading ? Visibility.Collapsed : Visibility.Visible;
         if (prepared && !wasPrepared && !preparing) downloads.IsExpanded = false;
         wasPrepared = prepared;
         generate.IsEnabled = available && compatible && IsReady && (task.SelectedIndex != 1 || reference is not null)
-            && (task.SelectedIndex != 2 || provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt));
+            && (task.SelectedIndex != 2 || provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false));
         prompt.IsEnabled = example.IsEnabled = available; task.IsEnabled = available;
         for (var index = 0; index < taskTabs.Length; index++) { taskTabs[index].IsEnabled = available; taskTabs[index].Background = new SolidColorBrush(index == task.SelectedIndex ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67)); }
         animation.IsEnabled = license.IsEnabled = available && !IsActive;
         enhancePrompt.IsEnabled = importModels.IsEnabled = available && !IsActive;
         reviewPreparedPrompt.IsEnabled = available && settings().Visual.EnhancePrompt;
         reviewPreparedPrompt.Visibility = settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed;
+        fullEdit.IsEnabled = available && !IsActive;
+        fullEdit.Visibility = task.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = useIdentity.IsEnabled = available;
         imageQuality.IsEnabled = available && task.SelectedIndex != 2; imageQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
@@ -251,7 +261,7 @@ public sealed class VisualPane : UserControl
         clear.Visibility = reference is null ? Visibility.Collapsed : Visibility.Visible;
         referenceLabel.Visibility = reference is not null || task.SelectedIndex != 0 ? Visibility.Visible : Visibility.Collapsed;
         referenceLabel.Text = reference is null ? "Elegí una imagen para usarla como punto de partida." : task.SelectedIndex == 0 ? "Imagen disponible. Marcá la opción de referencia para usar su personaje en una escena nueva." : IsOwnedExistingResult(reference) ? "Imagen seleccionada de tus creaciones. Escribí qué querés cambiar." : "Imagen seleccionada: " + Path.GetFileName(reference);
-        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt) ? "Agregá el modelo de animación en Modelos y descargas." : "";
+        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false) ? "Agregá el modelo de animación en Modelos y descargas." : "";
         creationHint.Visibility = string.IsNullOrEmpty(creationHint.Text) ? Visibility.Collapsed : Visibility.Visible;
     }
     public async Task StartAsync(CancellationToken ct)
@@ -279,7 +289,7 @@ public sealed class VisualPane : UserControl
             visual.AnimationFrames = frames; visual.AnimationSteps = steps.SelectedIndex switch { 0 => 10, 2 => 30, _ => 20 }; Save();
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
             if (!string.IsNullOrWhiteSpace(seed.Text) && !long.TryParse(seed.Text, out chosenSeed)) throw new InvalidDataException("La semilla debe ser un número entero positivo o estar vacía.");
-            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, gpu()?.IsRtx3090 == true, visual.EnhancePrompt);
+            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, gpu()?.IsRtx3090 == true, visual.EnhancePrompt, kind == VisualTask.Edit && visual.FullEdit);
             request.Validate();
             var chosenReference = kind == VisualTask.Image && useIdentity.IsChecked != true ? null : reference;
             VisualReference? discovered = chosenReference is null ? null : onlineReference;
@@ -323,8 +333,7 @@ public sealed class VisualPane : UserControl
             // A single reference defines the framing, as HiDream's official workflow does: the model
             // copies a wide reference (a series cover, a landscape) when the target is padded to another shape.
             if (kind != VisualTask.Animation && chosenReference is not null && referencePixels is { } frame)
-            { (width, height) = VisualSizes.ForReference(frame.Width, frame.Height); request = request with { Width = width, Height = height }; request.Validate(); }
-            PreparedPrompt? prepared = null;
+            { (width, height) = VisualSizes.ForReference(frame.Width, frame.Height); request = request with { Width = width, Height = height }; request.Validate(); }            PreparedPrompt? prepared = null;
             if (visual.EnhancePrompt)
             {
                 status(kind == VisualTask.Animation ? "Preparando la descripción del movimiento con el asistente visual…" : "Preparando la descripción con el asistente visual…");
@@ -366,6 +375,7 @@ public sealed class VisualPane : UserControl
             referencePixels = (frame.PixelWidth, frame.PixelHeight);
             ShowOnlineSource(null);
             reference = file; useIdentity.IsChecked = false; referenceLabel.Text = "Imagen seleccionada: " + Path.GetFileName(file) + ". Escribí qué querés cambiar.";
+            if ((long)frame.PixelWidth * frame.PixelHeight < 1_700_000) status("Imagen pequeña para editar (" + Math.Round(frame.PixelWidth * (double)frame.PixelHeight / 1e6, 1) + " MP): la edición rinde mejor desde 1,7 MP. Conviene generarla antes y editarla a mayor tamaño.");
             resultFile = IsOwnedExistingResult(file) ? file : null; LoadPreview(file); resultTitle.Text = "Imagen seleccionada"; Refresh();
         }
         catch (Exception ex) { status("No se pudo elegir la referencia: " + ex.Message); }
