@@ -31,7 +31,7 @@ public sealed class VisualPane : UserControl
     private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un asistente visual local (8,09 GB adicionales)" };
     private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
     private readonly Button importModels = new() { Content = "Usar modelos HiDream ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
-    private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Rápida · 1024 píxeles", "Detalle · 1536 píxeles", "Alta · 2048 píxeles (experimental)" }, SelectedIndex = 0 };
+    private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Prueba rápida · 1024 píxeles (menos fiel)", "Equilibrada · 1536 píxeles", "Recomendada · 2048 píxeles" }, SelectedIndex = 2 };
     private readonly CheckBox webReferences = new() { Content = "Buscar personajes reconocibles en Wikipedia" };
     private readonly TextBlock animationHint = new() { Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10), Visibility = Visibility.Collapsed };
     private readonly TextBox webSubject = new() { MaxLength = 100, ToolTip = "Opcional: escribí solo el personaje u objeto, por ejemplo Frieren. Vacío: se intenta detectar en tu descripción." };
@@ -39,6 +39,7 @@ public sealed class VisualPane : UserControl
     private readonly Button webSource = new() { Content = "Ver origen de la referencia", HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed, FontSize = 12 };
     private readonly CheckBox useIdentity = new() { Content = "Usar esta imagen como referencia del personaje" };
     private VisualReference? onlineReference;
+    private VisualReference? usedSource;
     private readonly Button prepare = new() { Content = "Preparar imágenes" };
     private readonly Button generate = new() { Content = "Generar", Background = new SolidColorBrush(Color.FromRgb(8, 127, 112)), Foreground = Brushes.White };
     private readonly Button example = new() { Content = "Probar un ejemplo", HorizontalAlignment = HorizontalAlignment.Left, FontSize = 12, Padding = new(0, 8, 0, 8), Background = Brushes.Transparent, Foreground = new SolidColorBrush(Color.FromRgb(91, 211, 189)) };
@@ -131,7 +132,7 @@ public sealed class VisualPane : UserControl
         onlineOptions.Content = webOptions; editor.Children.Add(onlineOptions);
         editor.Children.Add(webStatus); editor.Children.Add(webSource);
         webReferences.Click += (_, _) => { settings().Visual.WebReferencesEnabled = webReferences.IsChecked == true; Save(); Refresh(); };
-        webSource.Click += (_, _) => { if (onlineReference is { } item && VisualReferenceSearch.AllowedPage(item.PageUrl)) OpenPath(item.PageUrl); };
+        webSource.Click += (_, _) => { if ((usedSource ?? onlineReference) is { } item && VisualReferenceSearch.AllowedPage(item.PageUrl)) OpenPath(item.PageUrl); };
         results.Children.Add(resultTitle); results.Children.Add(new TextBlock { Text = "Acá podés revisar, abrir y guardar tu creación.", Foreground = Brushes.LightGray, Margin = new(0, 6, 0, 14) });
         var canvas = new Grid { MinHeight = 280, Background = new SolidColorBrush(Color.FromRgb(13, 21, 28)), Margin = new(0, 0, 0, 14) }; preview.Height = 300; canvas.Children.Add(preview); canvas.Children.Add(emptyPreview); results.Children.Add(canvas);
         var actions = new WrapPanel(); actions.Children.Add(open); actions.Children.Add(export);
@@ -149,7 +150,7 @@ public sealed class VisualPane : UserControl
         {
             settings().Visual.EnhancePrompt = enhancePrompt.IsChecked == true; Save(); UpdatePackage(); Refresh();
             if (enhancePrompt.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true)) status("El asistente necesita 8,09 GB. Pulsá Descargar y preparar antes de iniciar la IA; lo descargado se reutiliza.");
-            else if (enhancePrompt.IsChecked != true) status("Asistente desactivado. Los archivos descargados se conservan y podés volver a activarlo cuando quieras.");
+            else if (enhancePrompt.IsChecked != true) status("Asistente desactivado: HiDream recibe tu descripción tal cual y conviene escribirla en inglés. Los archivos descargados se conservan.");
         };
         reviewPreparedPrompt.Click += (_, _) => { settings().Visual.ReviewPreparedPrompt = reviewPreparedPrompt.IsChecked == true; Save(); };
         animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); };
@@ -186,7 +187,7 @@ public sealed class VisualPane : UserControl
             if (file is null) { status("Este trabajo no tiene un resultado disponible; sus datos siguen en el historial."); return; }
             ShowResult(file);
             if (Path.GetExtension(file).Equals(".png", StringComparison.OrdinalIgnoreCase)) { SetReference(file); task.SelectedIndex = 1; }
-            ShowOnlineSource(item.Job.OnlineReference);
+            ShowUsedSource(item.Job.OnlineReference);
             ShowPreparedDescription(item.Job);
         };
         ReloadSettings(); LoadGallery();
@@ -224,7 +225,7 @@ public sealed class VisualPane : UserControl
         animation.IsEnabled = license.IsEnabled = available && !IsActive;
         enhancePrompt.IsEnabled = importModels.IsEnabled = available && !IsActive;
         reviewPreparedPrompt.IsEnabled = available && settings().Visual.EnhancePrompt;
-        reviewPreparedPrompt.Visibility = settings().Visual.EnhancePrompt && task.SelectedIndex != 2 ? Visibility.Visible : Visibility.Collapsed;
+        reviewPreparedPrompt.Visibility = settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed;
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = useIdentity.IsEnabled = available;
         imageQuality.IsEnabled = available && task.SelectedIndex != 2; imageQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
@@ -319,14 +320,18 @@ public sealed class VisualPane : UserControl
             else if (kind == VisualTask.Image) { if (chosenReference is null) ShowOnlineSource(null); webStatus.Text = chosenReference is null ? "Creación sin búsqueda en internet." : "Se usa la imagen seleccionada como referencia del personaje."; }
             var lookupNote = webStatus.Text;
             PreparedPrompt? prepared = null;
-            if (kind != VisualTask.Animation && visual.EnhancePrompt && visual.ReviewPreparedPrompt)
+            if (visual.EnhancePrompt)
             {
-                status("Preparando la descripción con el asistente visual…");
+                status(kind == VisualTask.Animation ? "Preparando la descripción del movimiento con el asistente visual…" : "Preparando la descripción con el asistente visual…");
                 var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
-                var reviewed = PreparedPromptWindow.Show(Window.GetWindow(this), current.Text, request.Prompt, chosenReference is not null,
-                    async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token, discovered)).Text, ct);
-                if (reviewed is null) { status("Generación de imagen cancelada. Tu pedido sigue en el cuadro de texto."); return; }
-                prepared = current with { Text = reviewed };
+                if (visual.ReviewPreparedPrompt)
+                {
+                    var reviewed = PreparedPromptWindow.Show(Window.GetWindow(this), current.Text, request.Prompt, chosenReference is not null,
+                        async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token, discovered)).Text, ct);
+                    if (reviewed is null) { status("Generación cancelada. Tu pedido sigue en el cuadro de texto."); return; }
+                    current = current with { Text = reviewed };
+                }
+                prepared = current;
             }
             status(kind == VisualTask.Animation ? "Preparando la animación; la primera carga puede tardar…" : "Preparando tu imagen…");
             var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered, prepared);
@@ -335,7 +340,9 @@ public sealed class VisualPane : UserControl
             ShowResult(file);
             ShowPreparedDescription(job);
             if (kind != VisualTask.Animation) { SetReference(file); task.SelectedIndex = 1; }
-            ShowOnlineSource(job.OnlineReference);
+            // Display only: the chosen image is now a local file, so the online source must not
+            // become the metadata of the next reference.
+            ShowUsedSource(job.OnlineReference);
             if (kind == VisualTask.Image && job.OnlineReference is null && visual.WebReferencesEnabled) webStatus.Text = lookupNote;
             var referenceSummary = kind == VisualTask.Image && visual.WebReferencesEnabled ? job.OnlineReference is { } source ? " Referencia utilizada: " + source.Title + "." : " " + lookupNote : "";
             status((kind == VisualTask.Animation ? "Animación creada. Podés abrir el MP4 o guardar la versión GIF." : "Imagen creada. Pedí otro cambio o elegí Crear imagen para empezar otra.") + (job.TotalSeconds is { } seconds ? $" Tiempo del motor: {seconds:0.0} s." : "") + referenceSummary);
@@ -359,7 +366,10 @@ public sealed class VisualPane : UserControl
     }
     private bool IsOwnedExistingResult(string file) => StorageCleanup.Within(Path.GetFullPath(file), paths.VisualOutputs) && File.Exists(file);
     private void ShowOnlineSource(VisualReference? source)
-    { onlineReference = source; webStatus.Text = source is null ? "" : "Referencia original: " + source.Title + " · Wikipedia"; webSource.Visibility = source is not null ? Visibility.Visible : Visibility.Collapsed; }
+    { usedSource = source; onlineReference = source; webStatus.Text = source is null ? "" : "Referencia original: " + source.Title + " · Wikipedia"; webSource.Visibility = source is not null ? Visibility.Visible : Visibility.Collapsed; }
+    // Keeps the source visible in the result without turning it into the current reference metadata.
+    private void ShowUsedSource(VisualReference? source)
+    { usedSource = source; webStatus.Text = source is null ? "" : "Referencia original usada: " + source.Title + " · Wikipedia"; webSource.Visibility = source is not null ? Visibility.Visible : Visibility.Collapsed; }
     private void ShowResult(string file)
     {
         if (!IsOwnedExistingResult(file)) return; resultFile = file; resultTitle.Text = "Tu resultado"; LoadPreview(file); Refresh();
@@ -396,7 +406,7 @@ public sealed class VisualPane : UserControl
         if (gallery.Visibility != Visibility.Collapsed || emptyGallery.Visibility != Visibility.Visible || creationHint.Visibility != Visibility.Visible) throw new Exception("El estado inicial no explica cómo empezar.");
         task.SelectedIndex = 2; size.SelectedIndex = 2; Refresh();
         if (!animationFormats || !size.IsEnabled || !size.Items[2].ToString()!.Contains("448 × 768") || animationHint.Visibility != Visibility.Visible) throw new Exception("La orientación de la animación no se puede elegir.");
-        if (reviewPreparedPrompt.Visibility != Visibility.Collapsed) throw new Exception("La revisión de la descripción se ofrece al animar.");
+        if (reviewPreparedPrompt.Visibility != (settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed)) throw new Exception("La revisión de la descripción no sigue al asistente al animar.");
         task.SelectedIndex = 0; Refresh();
         if (animationFormats || !size.Items[2].ToString()!.Contains("768 × 1024")) throw new Exception("La animación alteró los formatos de imagen.");
         if (reviewPreparedPrompt.Visibility != (settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed)) throw new Exception("La revisión de la descripción no sigue al asistente.");

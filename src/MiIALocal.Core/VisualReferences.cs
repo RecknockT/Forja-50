@@ -50,7 +50,7 @@ public sealed class VisualReferenceSearch : IDisposable
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(25)); ct = deadline.Token;
         subject = subject.Trim();
         if (subject.Length is < 1 or > 100) throw new InvalidDataException("Escribí el personaje u objeto que querés buscar (hasta 100 caracteres).");
-        var url = "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=0&gsrlimit=8&prop=pageimages%7Cinfo&inprop=url&piprop=thumbnail&pithumbsize=1024&pilicense=any&gsrsearch=" + Uri.EscapeDataString(subject);
+        var url = "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=0&gsrlimit=8&prop=pageimages%7Cinfo%7Cpageprops&inprop=url&piprop=thumbnail&pithumbsize=1024&pilicense=any&gsrsearch=" + Uri.EscapeDataString(subject);
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         var bytes = await ReadLimitedAsync(response, 1_000_000, ct);
@@ -60,6 +60,9 @@ public sealed class VisualReferenceSearch : IDisposable
         var results = new List<VisualReference>();
         foreach (var page in pages.EnumerateArray())
         {
+            // A common noun that happens to share a title ("casa", "sol") must never become a
+            // reference: disambiguation pages are the most frequent false positive.
+            if (page.TryGetProperty("pageprops", out var props) && props.ValueKind == JsonValueKind.Object && props.TryGetProperty("disambiguation", out _)) continue;
             if (!page.TryGetProperty("thumbnail", out var thumbnail) || !thumbnail.TryGetProperty("source", out var source)
                 || !page.TryGetProperty("fullurl", out var fullUrl) || !page.TryGetProperty("title", out var title)) continue;
             var image = source.GetString() ?? ""; var article = fullUrl.GetString() ?? "";

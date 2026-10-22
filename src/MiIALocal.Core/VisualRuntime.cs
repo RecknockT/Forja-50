@@ -51,9 +51,9 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         try
         {
             request.Validate();
-            if (request.Task == VisualTask.Animation) throw new InvalidDataException("La animación no usa el asistente de descripción.");
             if (!request.EnhancePrompt) throw new InvalidOperationException("El asistente de descripción está desactivado.");
-            if (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || !promptAssistant) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
+            if (!promptAssistant) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
+            if (request.Task != VisualTask.Animation && request.HighPrecision != (activeGpu?.IsRtx3090 == true)) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             var input = StageReference(reference);
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
@@ -76,8 +76,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             request.Validate();
             if (request.Task != VisualTask.Animation && (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || request.EnhancePrompt != promptAssistant)) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
-            if (request.Task == VisualTask.Animation) prepared = null;
-            else if (prepared is not null && !request.EnhancePrompt) prepared = null;
+            if (prepared is not null && !request.EnhancePrompt) prepared = null;
             if (request.Task == VisualTask.Animation)
                 await new VisualProvisioner(paths, new VerifiedDownloader(http)).VerifyModelsAsync(true, ct, activeGpu, promptAssistant);
             var input = prepared?.StagedReference ?? StageReference(reference);
@@ -157,11 +156,8 @@ public sealed class ComfyClient
         LastPreparedPrompt = null;
         var graph = VisualWorkflows.Build(request, id, reference, preparedPrompt, referenceTitle);
         var result = await RunAsync(graph, progress, ct, useSocket, "Generando; la primera carga puede tardar varios minutos");
-        if (request.Task != VisualTask.Animation)
-        {
-            LastPreparedPrompt = preparedPrompt ?? ReadPreparedPrompt(result);
-            if (LastPreparedPrompt is null) throw new IOException("HiDream terminó sin registrar la descripción utilizada. Revisá Diagnóstico.");
-        }
+        LastPreparedPrompt = preparedPrompt ?? (request.Task == VisualTask.Animation ? null : ReadPreparedPrompt(result));
+        if (request.Task != VisualTask.Animation && LastPreparedPrompt is null) throw new IOException("HiDream terminó sin registrar la descripción utilizada. Revisá Diagnóstico.");
         return ReadFiles(result, outputRoot, id);
     }
     private async Task<JsonElement> RunAsync(Dictionary<string, object> graph, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket, string submitted)

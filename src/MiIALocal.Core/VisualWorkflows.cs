@@ -56,7 +56,8 @@ public static class VisualWorkflows
             Node("1", "UNETLoader", ("unet_name", VisualCatalog.Wan.Asset.FileName), ("weight_dtype", "default"));
             Node("2", "CLIPLoader", ("clip_name", VisualCatalog.WanText.Asset.FileName), ("type", "wan"), ("device", "default"));
             Node("3", "VAELoader", ("vae_name", VisualCatalog.WanVae.Asset.FileName));
-            Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.Prompt(r.Prompt, reference is not null)));
+            // The assistant, when active, already produced the English motion instruction.
+            Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.Prompt(preparedPrompt ?? r.Prompt, reference is not null)));
             Node("5", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.NegativePrompt));
             Node("6", "Wan22ImageToVideoLatent", ("vae", Link("3")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
             if (reference is not null)
@@ -83,7 +84,6 @@ public static class VisualWorkflows
     public static Dictionary<string, object> BuildPrepare(VisualRequest r, string? reference, string? referenceTitle = null)
     {
         Validate(r, null, reference);
-        if (r.Task == VisualTask.Animation) throw new InvalidDataException("La animación no usa el asistente de descripción.");
         if (!r.EnhancePrompt) throw new InvalidDataException("El asistente de descripción está desactivado.");
         var graph = new Dictionary<string, object>();
         void Node(string id, string type, params (string, object)[] inputs)
@@ -137,9 +137,12 @@ public static class VisualWorkflows
         return string.IsNullOrEmpty(title) ? r.Prompt : "Referencia elegida: " + title + "\n" + r.Prompt;
     }
 
-    private static string SystemPrompt(VisualRequest r, bool hasReference) => r.Task == VisualTask.Edit
-        ? VisualPrompts.Edit
-        : hasReference ? VisualPrompts.NewScene : VisualPrompts.Create;
+    private static string SystemPrompt(VisualRequest r, bool hasReference) => r.Task switch
+    {
+        VisualTask.Animation => VisualPrompts.Animation,
+        VisualTask.Edit => VisualPrompts.Edit,
+        _ => hasReference ? VisualPrompts.NewScene : VisualPrompts.Create
+    };
 
     private static string Instruction(VisualRequest r, bool hasReference) => r.Task == VisualTask.Image && hasReference
         ? "Create a new scene featuring the subject from the reference image. Preserve their identity and characteristic appearance. Scene request: " + r.Prompt

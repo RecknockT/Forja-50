@@ -43,7 +43,13 @@ static class VisualTests
             assert(!prepare.TryGetProperty("1", out _) && !prepare.TryGetProperty("11", out _) && !prepare.TryGetProperty("13", out _), "La preparación carga la difusión o escribe resultados.");
             assert(VisualWorkflows.BuildPrepare(new(VisualTask.Image, "Robot", 1024, 1024, 1, EnhancePrompt: true), null).Values.Count == 3, "La preparación sin referencia ejecuta nodos de más.");
             try { VisualWorkflows.BuildPrepare(new(VisualTask.Image, "Robot", 1024, 1024, 1), null); throw new Exception("Se preparó una descripción con el asistente desactivado."); } catch (InvalidDataException) { }
-            try { VisualWorkflows.BuildPrepare(new(VisualTask.Animation, "Robot", 768, 448, 1, EnhancePrompt: true), null); throw new Exception("Se preparó una descripción para animación."); } catch (InvalidDataException) { }
+            var movement = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Animation, "que camine", 768, 448, 1, EnhancePrompt: true), "start.png"));
+            assert(movement.GetProperty("31").GetProperty("class_type").GetString() == "TextGenerate" && movement.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("movimiento"), "La animación no prepara el movimiento en inglés.");
+            assert(movement.GetProperty("31").GetProperty("inputs").GetProperty("prompt").GetString() == "que camine", "La animación no recibe el pedido textual.");
+            assert(movement.GetProperty("31").GetProperty("inputs").GetProperty("image")[0].GetString() == "22" && !movement.TryGetProperty("1", out _), "La preparación de animación no ve el marco inicial o carga difusión.");
+            var animated = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "que camine", 768, 448, 1, EnhancePrompt: true), new string('a', 32), "start.png", "The character walks slowly forward."));
+            assert(animated.GetProperty("4").GetProperty("inputs").GetProperty("text").GetString()!.Contains("The character walks slowly forward."), "La animación descarta el movimiento preparado.");
+            assert(!animated.TryGetProperty("31", out _), "La animación vuelve a ejecutar el asistente.");
             return Task.CompletedTask;
         });
         await test("HiDream: editar usa el programador de flujo sin la reinyección de ruido", () =>
@@ -131,10 +137,20 @@ static class VisualTests
             using var search = new VisualReferenceSearch(new AsyncHandler((request, _) =>
             {
                 if (request.RequestUri!.Host == "en.wikipedia.org")
-                { sawQuery = request.RequestUri.Query.Contains("gsrsearch=Frieren") && request.RequestUri.Query.Contains("pithumbsize=1024") && request.Headers.Authorization is null; return Task.FromResult(Json(new { query = new { pages = new[] { new { title = "Frieren (character)", fullurl = "https://en.wikipedia.org/wiki/Frieren_(character)", thumbnail = new { source = "https://upload.wikimedia.org/frieren.png" } } } } })); }
+                {
+                    sawQuery = request.RequestUri.Query.Contains("gsrsearch=Frieren") && request.RequestUri.Query.Contains("pithumbsize=1024") && request.RequestUri.Query.Contains("pageprops") && request.Headers.Authorization is null;
+                    var pages = new object[]
+                    {
+                        new { title = "Frieren (character)", fullurl = "https://en.wikipedia.org/wiki/Frieren_(character)", thumbnail = new { source = "https://upload.wikimedia.org/frieren.png" } },
+                        new { title = "Casa", fullurl = "https://en.wikipedia.org/wiki/Casa", thumbnail = new { source = "https://upload.wikimedia.org/casa.png" }, pageprops = new Dictionary<string, string> { ["disambiguation"] = "" } }
+                    };
+                    return Task.FromResult(Json(new { query = new { pages } }));
+                }
                 var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([137, 80, 78, 71, 13, 10, 26, 10]) }; response.Content.Headers.ContentType = new("image/png"); return Task.FromResult(response);
             }));
-            var reference = (await search.SearchAsync("Frieren", default)).Single();
+            var choices = await search.SearchAsync("Frieren", default);
+            assert(choices.Single().Title == "Frieren (character)", "Una página de desambiguación se convirtió en referencia.");
+            var reference = choices.Single();
             var file = await search.DownloadAsync(reference, Path.Combine(root, "web-references"), default);
             assert(sawQuery && File.Exists(file), "No se obtuvo la referencia por el protocolo previsto.");
             var paths = new AppPaths(Path.Combine(root, "web-provenance")); var store = new VisualJobStore(paths); store.Save(new() { OnlineReference = reference });

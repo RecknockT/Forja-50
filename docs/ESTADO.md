@@ -1,6 +1,6 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.2.
+22 de octubre de 2026 · desarrollo 0.4.3.
 
 ## Compatibilidad del dibujo de la interfaz · 0.4.2
 
@@ -8,14 +8,18 @@
 - La preferencia se aplica solo al proceso de interfaz: no modifica el registro, los controladores, las descargas ni la ejecución CUDA de los motores. WebView2 conserva su configuración independiente.
 - La prueba de modos comprueba la preferencia en el proceso real. Las capturas internas comprueban el diseño; no sustituyen una comprobación de pantalla del usuario en las condiciones originales del fallo.
 
-## Descripción del asistente · sin publicar
+## Descripción, referencias y animación · 0.4.3
 
-- El asistente recibía un envoltorio en inglés con el pedido pegado y un prompt de sistema en inglés que prohibía usar nombres propios: con «quiero generar una imagen de frieren de anime» devolvía una escena genérica. Se reescribieron las instrucciones en español (el idioma de la persona, como hace el autor de HiDream) exigiendo la salida en inglés, con reglas explícitas: descartar fórmulas de encargo, conservar textualmente cada nombre propio, título y texto entre comillas, conservar los rasgos del personaje nombrado, no agregar nombres no pedidos, mantener los estilos generales generales y escribir las exclusiones como ausencias. Hay tres prompts según la tarea: crear sin referencia, escena nueva con referencia y edición acotada.
+- El asistente recibía un envoltorio en inglés con el pedido pegado y un prompt de sistema en inglés que prohibía usar nombres propios: con «quiero generar una imagen de frieren de anime» devolvía una escena genérica. Se reescribieron las instrucciones en español (el idioma de la persona, como hace el autor de HiDream) exigiendo la salida en inglés, con reglas explícitas: descartar fórmulas de encargo, conservar textualmente cada nombre propio, título y texto entre comillas, conservar los rasgos del personaje nombrado, no agregar nombres no pedidos, mantener los estilos generales generales y escribir las exclusiones como ausencias. Hay cuatro prompts según la tarea: crear sin referencia, escena nueva con referencia, edición acotada y animación.
 - El título de la referencia elegida (por ejemplo «Frieren (character)») ahora entra al asistente y no solo la imagen. Muestreo más fiel: temperatura 0,5, `top_p` 0,9 y `min_p` 0,02 (antes 0,7/0,95/0,05); se conservan 512 tokens y la semilla. La ventana de revisión permite corregir el texto antes de la difusión.
-- Pruebas de grafo: pedido textual, reglas de nombres e idioma, muestreo, título de la referencia y prompt de edición. Sin modelos ni GPU; pendiente la prueba física con el pedido real.
+- Referencias en línea: se descartan las páginas de desambiguación de Wikipedia (`pageprops`). Evita que una palabra común («casa», «sol») se convierta en una referencia ajena y que aparezca el diálogo con una foto que no corresponde.
+- La referencia usada se muestra como información y deja de ser el metadato de la siguiente: antes, tras generar, el título de Wikipedia quedaba asociado a tu archivo local y el asistente recibía un nombre que no correspondía.
+- La animación también usa al asistente: prepara la instrucción de movimiento en inglés (Wan está entrenado en inglés) con revisión editable, o sin ventana si la revisión está desactivada. Antes el texto en español iba crudo al codificador.
+- Calidad: la escalera pasa a «Prueba rápida 1024 (menos fiel)», «Equilibrada 1536» y «Recomendada 2048». HiDream está entrenado a ~4 MP y su propio nodo advierte que bajar resolución degrada la fidelidad. Al desactivar el asistente se avisa que HiDream recibe el texto tal cual y conviene escribir en inglés.
+- Pruebas: 89 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Pendiente la prueba física con pedidos reales en las tres placas.
 - Límite conocido: el asistente es Gemma 4 E4B INT8; el agente oficial del autor usa Gemma 4 31B. El texto preparado sigue siendo editable antes de generar.
 
-## Edición de HiDream con el programador del autor · sin publicar
+## Edición de HiDream con el programador del autor · 0.4.3
 
 - Al editar (o al crear una escena nueva desde una imagen) HiDream recomienda su programador de edición para Dev, que corresponde a Euler de flujo sin la reinyección de ruido por paso del camino destilado. Forja lo aplica cuando hay una única imagen de referencia (`KSamplerSelect` con `euler`); crear sin referencia conserva `SamplerLCM`. Se mantienen 28 pasos, CFG 1, la escala de ruido inicial y la referencia en `HiDreamO1ReferenceImages`. Motivo: el muestreador destilado aplicado a una edición producía ruido.
 - El autor además recomienda el modelo Full para editar; no se descarga por defecto ni se anuncia como probado. La escalera exacta `DEFAULT_TIMESTEPS` del autor no existe como nodo en ComfyUI: se conserva `BasicScheduler normal` con el shift del modelo, que la reproduce de forma aproximada.
