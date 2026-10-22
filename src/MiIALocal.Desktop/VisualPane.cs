@@ -72,7 +72,7 @@ public sealed class VisualPane : UserControl
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
     public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt);
-    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nHiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos\nCFG 1 · LCM · normal\nAsistente Gemma 4 E4B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
+    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nHiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos\nCFG 1 · normal · Euler al editar · LCM al crear\nAsistente Gemma 4 E4B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
 
 
     public VisualPane(AppPaths paths, Func<AppSettings> settings, HttpClient http, Func<GpuInfo?> gpu,

@@ -43,7 +43,11 @@ public static class VisualWorkflows
             }
             Node("7", "ModelNoiseScale", ("model", Link("1")), ("noise_scale", 7.6));
             Node("8", "BasicScheduler", ("model", Link("7")), ("scheduler", "normal"), ("steps", 28), ("denoise", 1.0));
-            Node("9", "SamplerLCM", ("s_noise", 1.0), ("s_noise_end", 1.0), ("noise_clip_std", 2.5));
+            // HiDream recommends its flow-match editing scheduler for Dev whenever there is exactly one
+            // reference image: plain Euler, without the per-step noise re-injection of the distilled
+            // creation path (SamplerLCM). Using the distilled sampler on an edit produced noise.
+            if (reference is not null) Node("9", "KSamplerSelect", ("sampler_name", "euler"));
+            else Node("9", "SamplerLCM", ("s_noise", 1.0), ("s_noise_end", 1.0), ("noise_clip_std", 2.5));
             Node("11", "SamplerCustom", ("model", Link("7")), ("positive", positive), ("negative", negative), ("latent_image", Link("6")),
                 ("add_noise", true), ("noise_seed", r.Seed), ("cfg", 1.0), ("sampler", Link("9")), ("sigmas", Link("8")));
         }

@@ -46,6 +46,21 @@ static class VisualTests
             try { VisualWorkflows.BuildPrepare(new(VisualTask.Animation, "Robot", 768, 448, 1, EnhancePrompt: true), null); throw new Exception("Se preparó una descripción para animación."); } catch (InvalidDataException) { }
             return Task.CompletedTask;
         });
+        await test("HiDream: editar usa el programador de flujo sin la reinyección de ruido", () =>
+        {
+            var prefix = new string('a', 32);
+            var edit = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá solo el brazo", 1024, 1024, 42), prefix, "reference.png"));
+            assert(edit.GetProperty("9").GetProperty("class_type").GetString() == "KSamplerSelect", "La edición conserva el muestreador destilado.");
+            assert(edit.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "euler", "La edición no usa Euler de flujo.");
+            assert(!edit.GetProperty("9").GetProperty("inputs").TryGetProperty("noise_clip_std", out _), "La edición reinyecta ruido por paso.");
+            assert(edit.GetProperty("7").GetProperty("inputs").GetProperty("noise_scale").GetDouble() == 7.6, "La edición pierde la escala de ruido inicial.");
+            assert(edit.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 28 && edit.GetProperty("11").GetProperty("inputs").GetProperty("cfg").GetDouble() == 1.0, "La edición cambió el calendario o la guía.");
+            var personalized = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Frieren volando", 1024, 1024, 42), prefix, "wiki-reference.png"));
+            assert(personalized.GetProperty("9").GetProperty("class_type").GetString() == "KSamplerSelect", "Una referencia única no usa el programador de edición.");
+            var create = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 42), prefix));
+            assert(create.GetProperty("9").GetProperty("class_type").GetString() == "SamplerLCM" && create.GetProperty("9").GetProperty("inputs").GetProperty("noise_clip_std").GetDouble() == 2.5, "La creación sin referencia pierde el muestreador destilado.");
+            return Task.CompletedTask;
+        });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
         {
             var card = new GpuInfo(0, "NVIDIA GeForce RTX 3090", 24576, 24576, "fixture");

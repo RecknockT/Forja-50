@@ -8,6 +8,12 @@
 - La preferencia se aplica solo al proceso de interfaz: no modifica el registro, los controladores, las descargas ni la ejecución CUDA de los motores. WebView2 conserva su configuración independiente.
 - La prueba de modos comprueba la preferencia en el proceso real. Las capturas internas comprueban el diseño; no sustituyen una comprobación de pantalla del usuario en las condiciones originales del fallo.
 
+## Edición de HiDream con el programador del autor · sin publicar
+
+- Al editar (o al crear una escena nueva desde una imagen) HiDream recomienda su programador de edición para Dev, que corresponde a Euler de flujo sin la reinyección de ruido por paso del camino destilado. Forja lo aplica cuando hay una única imagen de referencia (`KSamplerSelect` con `euler`); crear sin referencia conserva `SamplerLCM`. Se mantienen 28 pasos, CFG 1, la escala de ruido inicial y la referencia en `HiDreamO1ReferenceImages`. Motivo: el muestreador destilado aplicado a una edición producía ruido.
+- El autor además recomienda el modelo Full para editar; no se descarga por defecto ni se anuncia como probado. La escalera exacta `DEFAULT_TIMESTEPS` del autor no existe como nodo en ComfyUI: se conserva `BasicScheduler normal` con el shift del modelo, que la reproduce de forma aproximada.
+- Pruebas de grafo y ventana sin modelos. Pendiente la prueba física de la edición en las tres placas; las cifras históricas de 0.4.1 corresponden al camino anterior.
+
 ## Correcciones de HiDream y limpieza · 0.4.1
 
 - Cargador propio del asistente: selecciona explícitamente la GPU del motor y permite descargar pesos a RAM entre etapas. Conserva LOW_VRAM para Wan/difusión; evita la ruta genérica que colocaba Gemma en CPU. Prueba ejecutando el cargador real con adaptadores: selección GPU 2, offload CPU, liberación previa y rechazo de fallback silencioso a CPU.
@@ -20,7 +26,7 @@
 ## HiDream-O1 Dev · 0.4.0 en desarrollo
 
 - Sustituye la preparación no publicada de FLUX 3: descarga pública de HiDream sin token/cuenta, checkpoint nativo FP8 escalado para 5080/5070 Ti y BF16 para 3090. Licencia MIT, revisión y hash fijados.
-- Flujo nativo de 28 pasos LCM/normal y CFG 1. Referencia real a HiDream, descripción original/preparada y tiempos conservados en el historial. Asistente Gemma 4 E4B INT8 opcional; liberación entre etapas. Calidad 1024/1536/2048, con formatos independientes de Wan.
+- Flujo nativo de 28 pasos y CFG 1: muestreador destilado (LCM) al crear sin referencia y Euler de flujo al editar con una referencia. Referencia real a HiDream, descripción original/preparada y tiempos conservados en el historial. Asistente Gemma 4 E4B INT8 opcional; liberación entre etapas. Calidad 1024/1536/2048, con formatos independientes de Wan.
 - Revisión previa de la descripción: con el asistente activo y la revisión habilitada (valor inicial), Forja ejecuta solo la etapa de texto y muestra el resultado editable antes de cargar la difusión. Se puede regenerar, volver al pedido original o cancelar antes de iniciar la difusión; el texto final es el que recibe HiDream y queda en el historial, sin repetir el asistente. Con la revisión desactivada se conserva el flujo de una sola pasada. Pruebas de grafo sin asistente duplicado, contrato HTTP de preparación y revisión real de la ventana; la captura de pantalla y la validación física siguen pendientes.
 - Modelos anteriores conservados y registrados para limpieza explícita. Instalador sin pesos; importación verificada, pausa y reanudación existentes. Licencia HiDream separada de aceptaciones anteriores.
 - Compilación y núcleo aprobados; cinco contratos de grafos aprobados contra ComfyUI real en CPU, sin pesos. Pendientes pruebas físicas, interfaz y paquete de esta versión. No equivale a validación en las tres placas.
