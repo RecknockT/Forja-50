@@ -52,11 +52,13 @@ public static class VisualCatalog
     public static VisualModel[] Images => [HiDream, HiDreamBf16, HiDreamFull, PromptAssistant];
     public static VisualModel[] Animations => [Wan, WanText, WanVae];
     public static VisualModel[] All => [.. Images, .. Animations, .. Legacy, FluxVae];
+    // The Full editing checkpoint is part of the image profile whenever it is enabled; the animation
+    // checks pass fullEdit:false, so preparing with animations enabled still downloads it.
     public static VisualModel[] For(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) =>
-        [Checkpoint(gpu), .. fullEdit && !animation ? new[] { HiDreamFull } : [], .. assistant ? new[] { PromptAssistant } : [], .. animation ? Animations : []];
+        [Checkpoint(gpu), .. fullEdit ? new[] { HiDreamFull } : [], .. assistant ? new[] { PromptAssistant } : [], .. animation ? Animations : []];
     public static string PathFor(AppPaths paths, VisualModel model) => Path.Combine(paths.VisualModels, model.Folder, model.Asset.FileName);
     public static long DownloadBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) =>
-        Runtime.Bytes!.Value + For(animation, gpu, assistant, fullEdit).Sum(m => m.Asset.Bytes!.Value) + (fullEdit && animation ? HiDreamFull.Asset.Bytes!.Value : 0);
+        Runtime.Bytes!.Value + For(animation, gpu, assistant, fullEdit).Sum(m => m.Asset.Bytes!.Value);
 
 }
 

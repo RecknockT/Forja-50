@@ -1,6 +1,13 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.11.
+22 de octubre de 2026 · desarrollo 0.4.12.
+
+## Descarga del modelo Full con animaciones activas · 0.4.12
+
+- Error corregido: con «Descargar también Wan para animaciones» activado, «Descargar y preparar» **excluía** el checkpoint Full (la lista se armaba con la opción de animación), mientras la comprobación del modo imágenes lo exigía. Resultado: el panel decía «falta descargar HiDream-O1 Full», preparar no descargaba nada y no se podía iniciar.
+- Ahora el checkpoint Full forma parte del perfil de imágenes siempre que la opción esté activa, con animaciones incluidas; las comprobaciones propias de la animación siguen sin exigirlo.
+- Alternativa inmediata sin actualizar: desactivar «Descargar también Wan para animaciones» y volver a preparar, o desactivar «Editar con el modelo Full» para iniciar con Dev.
+- Pruebas: 92 del conjunto completo y la comprobación de ventana, sin modelos ni GPU.
 
 ## Informe de comprobación · 0.4.11
 

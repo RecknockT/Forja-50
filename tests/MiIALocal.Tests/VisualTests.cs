@@ -132,7 +132,8 @@ static class VisualTests
             var create = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 2048, 2048, 42, FullEdit: true), prefix));
             assert(create.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDream.Asset.FileName, "Crear no debe cambiar de modelo.");
             assert(VisualCatalog.For(false, null, false, true).Contains(VisualCatalog.HiDreamFull) && VisualCatalog.DownloadBytes(false, null, false, true) > VisualCatalog.DownloadBytes(false, null, false), "El perfil Full no entra en la descarga.");
-            assert(!VisualCatalog.For(true, null, false, true).Contains(VisualCatalog.HiDreamFull), "La animación no debe exigir el modelo Full.");
+            assert(!VisualCatalog.For(true, null, false, false).Contains(VisualCatalog.HiDreamFull), "La animación no debe exigir el modelo Full.");
+            assert(VisualCatalog.For(true, null, true, true).Contains(VisualCatalog.HiDreamFull), "Preparar con animaciones debe incluir el modelo Full de edición.");
             return Task.CompletedTask;
         });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
@@ -261,7 +262,7 @@ static class VisualTests
         await test("Visual: catálogo completo fijado, animación opcional y sin Qwen/OpenCode", () =>
         {
             assert(VisualCatalog.Images.Length == 4 && VisualCatalog.For(true).Length == 5 && VisualCatalog.Legacy.Length == 2, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
-            assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 5, "El modelo Full para editar no se agrega al perfil.");
+            assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 6, "El modelo Full para editar no se agrega al perfil.");
             foreach (var model in VisualCatalog.All)
             {
                 assert(model.Asset.Bytes > 0 && model.Asset.Sha256.Length == 64 && !model.Asset.Url.Contains("/main/"), "Modelo sin integridad o revisión fija.");
