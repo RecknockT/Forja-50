@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.12.
+22 de octubre de 2026 · desarrollo 0.4.13.
+
+## Borrado selectivo de modelos anteriores · 0.4.13
+
+- Administrar almacenamiento incorpora una categoría propia, **«Modelos anteriores (FLUX.2 y Qwen3, ya no se usan)»**, con su espacio y su ruta. Antes la única opción era borrar la categoría «Modelos» completa, que se llevaba también el checkpoint de creación, el asistente y Wan.
+- La limpieza sigue protegiendo creaciones, referencias, importaciones, proyectos y repositorios; el borrado se vuelve a validar antes de ejecutarse.
+- Pruebas: 93 del conjunto completo y las comprobaciones de ventana y almacenamiento, sin modelos ni GPU.
 
 ## Descarga del modelo Full con animaciones activas · 0.4.12
 

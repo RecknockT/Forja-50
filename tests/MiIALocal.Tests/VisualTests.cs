@@ -348,6 +348,20 @@ static class VisualTests
             assert(VisualCatalog.All.All(m => !File.Exists(VisualCatalog.PathFor(paths, m)) && !File.Exists(VisualCatalog.PathFor(paths, m) + ".part")), "Quedaron pesos o parciales conocidos.");
             return Task.CompletedTask;
         });
+        await test("Almacenamiento: los modelos anteriores se borran sin tocar los actuales", () =>
+        {
+            var paths = new AppPaths(Path.Combine(root, "visual-legacy-cleanup"));
+            foreach (var model in VisualCatalog.All)
+            {
+                var file = VisualCatalog.PathFor(paths, model);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllText(file, "model");
+            }
+            new StorageCleanup(paths, new()).Delete([StorageCategory.Legacy]);
+            assert(VisualCatalog.Legacy.Append(VisualCatalog.FluxVae).All(m => !File.Exists(VisualCatalog.PathFor(paths, m))), "Los modelos anteriores no se borraron.");
+            assert(VisualCatalog.Images.Concat(VisualCatalog.Animations).All(m => File.Exists(VisualCatalog.PathFor(paths, m))), "El borrado de anteriores tocó los modelos actuales.");
+            return Task.CompletedTask;
+        });
         await test("Visual: contrato HTTP, autenticación y resultado de trabajo sin GPU", async () =>
         {
             var id = new string('d', 32); var promptId = Guid.NewGuid().ToString(); var output = Path.Combine(root, "visual-http"); Directory.CreateDirectory(output);

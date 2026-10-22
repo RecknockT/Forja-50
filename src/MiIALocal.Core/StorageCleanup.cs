@@ -1,6 +1,6 @@
 namespace MiIALocal.Core;
 
-public enum StorageCategory { Models, Components, Downloads, Conversations, Settings, GitHub }
+public enum StorageCategory { Models, Components, Downloads, Conversations, Settings, GitHub, Legacy }
 public sealed record StorageEntry(StorageCategory Category, string Title, string[] Paths, long Bytes, string? BlockedReason);
 
 /// <summary>Deletes only known application data. Imported assets, projects and links are protected.</summary>
@@ -14,15 +14,16 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
     public StorageEntry[] Inspect(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var models = new List<string>(); var partials = new List<string>();
-        var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings)))
-            .Concat(VisualCatalog.All.Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!)));
-        foreach (var (asset, modelDirectory) in managedModels)
+        var models = new List<string>(); var legacy = new List<string>(); var partials = new List<string>();
+        var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings), Previous: false))
+            .Concat(VisualCatalog.Images.Concat(VisualCatalog.Animations).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: false)))
+            .Concat(VisualCatalog.Legacy.Append(VisualCatalog.FluxVae).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: true)));
+        foreach (var (asset, modelDirectory, previous) in managedModels)
         {
             ct.ThrowIfCancellationRequested();
             var file = Path.Combine(modelDirectory, asset.FileName);
             if (Imported.Any(p => p.Equals(file, Comparison))) continue;
-            if (File.Exists(file)) models.Add(file);
+            if (File.Exists(file)) (previous ? legacy : models).Add(file);
             var directory = Path.GetDirectoryName(file)!;
             // Check ancestors before even inspecting a custom model directory.
             try { CheckAncestors(directory); }
@@ -39,6 +40,7 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
             if (Path.GetFileName(file) == "settings.json" || Path.GetFileName(file).StartsWith("settings.invalid-", StringComparison.Ordinal) || Path.GetFileName(file).StartsWith("settings.json.before-native-", StringComparison.Ordinal)) configuration.Add(file);
         return [
             Entry(StorageCategory.Models, "Modelos descargados por Forja", models, ct),
+            Entry(StorageCategory.Legacy, "Modelos anteriores (FLUX.2 y Qwen3, ya no se usan)", legacy, ct),
             Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime], ct),
             Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials), ct),
             Entry(StorageCategory.Conversations, "Conversaciones e historial de trabajos", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md", "visual/jobs", "visual/user" }.Select(p => Path.Combine(paths.Root, p)), ct),
