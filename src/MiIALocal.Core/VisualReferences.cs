@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace MiIALocal.Core;
 
-public sealed record VisualReference(string Title, string PageUrl, string ImageUrl, string Query)
+public sealed record VisualReference(string Title, string PageUrl, string ImageUrl, string Query, int Width = 0, int Height = 0)
 {
     public override string ToString() => Title;
 }
@@ -33,6 +33,9 @@ public sealed class VisualReferenceSearch : IDisposable
         if (stop >= 0) words.RemoveRange(stop, words.Count - stop);
         // Remove filler anywhere so "la elfa del anime frieren" still yields the name.
         words.RemoveAll(Fillers.Contains);
+        // Repeating the name ("frieren anime frieren") must not break the lookup.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        words.RemoveAll(word => !seen.Add(word));
         var subject = string.Join(' ', words.Take(6));
         return subject.Length > 100 ? subject[..100] : subject;
     }
@@ -70,10 +73,20 @@ public sealed class VisualReferenceSearch : IDisposable
                 || !page.TryGetProperty("fullurl", out var fullUrl) || !page.TryGetProperty("title", out var title)) continue;
             var image = source.GetString() ?? ""; var article = fullUrl.GetString() ?? "";
             if (!AllowedImage(image) || !AllowedPage(article)) continue;
-            results.Add(new(title.GetString() ?? subject, article, image, subject));
+            var width = thumbnail.TryGetProperty("width", out var w) && w.TryGetInt32(out var widthValue) ? widthValue : 0;
+            var height = thumbnail.TryGetProperty("height", out var h) && h.TryGetInt32(out var heightValue) ? heightValue : 0;
+            results.Add(new(title.GetString() ?? subject, article, image, subject, width, height));
         }
-        return results.OrderByDescending(r => MatchScore(r.Title, subject)).Take(8).ToArray();
+        // Clear matches first, then portrait or square images: a wide scene of the series does not
+        // show the character and produced landscape results.
+        return results.OrderByDescending(r => MatchScore(r.Title, subject)).ThenByDescending(LookScore).Take(8).ToArray();
     }
+
+    private static int LookScore(VisualReference reference) => reference.Width <= 0 || reference.Height <= 0 ? 0
+        : (reference.Height >= reference.Width ? 2 : 0) + (Math.Min(reference.Width, reference.Height) >= 256 ? 1 : 0);
+
+    /// <summary>A very wide image is usually a scene or a cover, not the character.</summary>
+    public static bool LooksLikeScene(VisualReference reference) => reference.Width > 0 && reference.Height > 0 && reference.Width > reference.Height * 1.6;
 
     private static int MatchScore(string title, string subject)
     {

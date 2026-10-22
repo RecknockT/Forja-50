@@ -1,6 +1,13 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.4.
+22 de octubre de 2026 · desarrollo 0.4.5.
+
+## Encuadre de la referencia · 0.4.5
+
+- Con una única imagen de referencia, el resultado ahora usa **su tamaño y su encuadre**, tanto al editar como al crear con referencia, igual que el flujo oficial de HiDream. Antes el lienzo se forzaba a la escalera de calidad y la referencia se rellenaba con bordes replicados: una portada o un paisaje ancho se copiaba como escena y el personaje quedaba chico o genérico.
+- El asistente ya no inventa un paisaje cuando la persona solo pidió un sujeto: mantiene al sujeto como protagonista en un plano medio o cercano con fondo simple y neutro, salvo que se pida una escena.
+- El selector de referencia aclara que una portada, un logo o un paisaje abierto deja al personaje pequeño y conviene una imagen cercana.
+- Pruebas: 90 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Pendiente la prueba física con «frieren (la elfa del anime)».
 
 ## Nombre pedido y edición · 0.4.4
 

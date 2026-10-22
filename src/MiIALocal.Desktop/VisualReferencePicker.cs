@@ -67,7 +67,7 @@ internal static class VisualReferencePicker
     {
         var body = new StackPanel { Margin = new(22) };
         body.Children.Add(new TextBlock { Text = "Revisá la referencia antes de crear", FontSize = 22, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        body.Children.Add(new TextBlock { Text = "Buscá una cara clara, vestimenta reconocible y pocos personajes. Una portada o un logo puede dar un mal resultado.", TextWrapping = TextWrapping.Wrap, Margin = new(0, 10, 0, 12), Foreground = Brushes.LightGray });
+        body.Children.Add(new TextBlock { Text = "Buscá una cara clara, vestimenta reconocible y pocos personajes. Una portada, un logo o un paisaje abierto deja al personaje pequeño y da un resultado genérico: conviene una imagen cercana del personaje.", TextWrapping = TextWrapping.Wrap, Margin = new(0, 10, 0, 12), Foreground = Brushes.LightGray });
         var choice = new ComboBox { ItemsSource = choices, Margin = new(0, 0, 0, 12) }; body.Children.Add(choice);
         var preview = new Image { Height = 290, Stretch = Stretch.Uniform }; body.Children.Add(preview);
         var info = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new(0, 10, 0, 12), Foreground = Brushes.LightGray }; body.Children.Add(info);
@@ -92,7 +92,10 @@ internal static class VisualReferencePicker
             preview.Source = ReadImage(file);
             using var input = File.OpenRead(file); var decoder = BitmapDecoder.Create(input, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
             var frame = decoder.Frames[0];
-            info.Text = $"{frame.PixelWidth} × {frame.PixelHeight} píxeles" + (Math.Min(frame.PixelWidth, frame.PixelHeight) < 256 ? " · Resolución baja: puede perder detalles. Conviene elegir otra imagen." : " · Comprobá que sea el personaje y la apariencia que buscás.");
+            var wide = frame.PixelWidth > frame.PixelHeight * 1.6;
+            info.Text = $"{frame.PixelWidth} × {frame.PixelHeight} píxeles" + (wide
+                ? " · Imagen horizontal amplia: suele ser una escena o una portada, no el personaje. Si buscás a alguien concreto, elegí otra imagen o creá sin referencia."
+                : Math.Min(frame.PixelWidth, frame.PixelHeight) < 256 ? " · Resolución baja: puede perder detalles. Conviene elegir otra imagen." : " · Comprobá que sea el personaje y la apariencia que buscás.");
             source.Text = reference?.PageUrl ?? "Imagen de tu equipo. No se sube a internet.";
             selected = new(file, reference); use.IsEnabled = true;
         }

@@ -79,10 +79,12 @@ static class VisualTests
             assert(createPrompt.Contains("nombre propio") && createPrompt.Contains("textualmente"), "El asistente no conserva los nombres escritos.");
             assert(createPrompt.Contains("idioma"), "El asistente no entiende el pedido en su idioma.");
             assert(createPrompt.Contains("de los 90"), "Se perdió la regla de estilos generales.");
+            assert(createPrompt.Contains("no inventes un paisaje"), "El asistente puede inventar un paisaje que nadie pidió.");
             assert(assistant.GetProperty("max_length").GetInt32() == 512 && assistant.GetProperty("sampling_mode.temperature").GetDouble() == 0.5
                 && assistant.GetProperty("sampling_mode.top_p").GetDouble() == 0.9 && assistant.GetProperty("sampling_mode.min_p").GetDouble() == 0.02, "El muestreo del asistente pierde fidelidad.");
             var scene = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "la elfa volando de noche", 1024, 1024, 42, EnhancePrompt: true), prefix, "ref.png", null, "Frieren (character)"));
             assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("referencia elegida"), "La escena con referencia no pide el título de la referencia.");
+            assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("paisaje"), "Una referencia amplia puede convertirse en el tema.");
             assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("prompt").GetString()!.Contains("Frieren (character)"), "Se pierde el nombre de la referencia elegida.");
             var prepared = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Edit, "cambiá el brazo a rojo", 1024, 1024, 42, EnhancePrompt: true), "ref.png"));
             assert(prepared.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("permanecer igual"), "Editar no usa la instrucción de edición.");
@@ -126,7 +128,7 @@ static class VisualTests
             assert(VisualReferenceSearch.SuggestSubject("Sailor Moon la guerrera, volando") == "Sailor Moon", "Se recorta un nombre compuesto.");
             assert(VisualReferenceSearch.SuggestSubject("generar una imagen de frieren volando") == "frieren", "La búsqueda incluye la acción.");
             assert(VisualReferenceSearch.SuggestSubject("Create an image of Frieren flying") == "Frieren", "La sugerencia en inglés incluye el pedido.");
-            foreach (var phrase in new[] { "frieren (la elfa del anime)", "la elfa del anime frieren", "quiero a frieren, la elfa del anime", "una elfa del anime llamada frieren" })
+            foreach (var phrase in new[] { "frieren (la elfa del anime)", "la elfa del anime frieren", "quiero a frieren, la elfa del anime", "una elfa del anime llamada frieren", "frieren anime frieren (la elfa del anime)" })
                 assert(VisualReferenceSearch.AutomaticSubject(phrase)?.Equals("frieren", StringComparison.OrdinalIgnoreCase) == true, "Se pierde el nombre en: " + phrase);
             assert(VisualReferenceSearch.AutomaticSubject("una elfa genérica en un bosque") is null, "Una descripción sin nombre se convierte en referencia.");
             assert(VisualReferenceSearch.SuggestSubject("") == "", "El pedido vacío falla.");
@@ -165,16 +167,19 @@ static class VisualTests
                     sawQuery = request.RequestUri.Query.Contains("gsrsearch=Frieren") && request.RequestUri.Query.Contains("pithumbsize=1024") && request.RequestUri.Query.Contains("pageprops") && request.Headers.Authorization is null;
                     var pages = new object[]
                     {
-                        new { title = "Frieren (character)", fullurl = "https://en.wikipedia.org/wiki/Frieren_(character)", thumbnail = new { source = "https://upload.wikimedia.org/frieren.png" } },
-                        new { title = "Casa", fullurl = "https://en.wikipedia.org/wiki/Casa", thumbnail = new { source = "https://upload.wikimedia.org/casa.png" }, pageprops = new Dictionary<string, string> { ["disambiguation"] = "" } }
+                        new { title = "Frieren (character)", fullurl = "https://en.wikipedia.org/wiki/Frieren_(character)", thumbnail = new { source = "https://upload.wikimedia.org/frieren.png", width = 800, height = 1000 } },
+                        new { title = "Casa", fullurl = "https://en.wikipedia.org/wiki/Casa", thumbnail = new { source = "https://upload.wikimedia.org/casa.png", width = 1600, height = 900 }, pageprops = new Dictionary<string, string> { ["disambiguation"] = "" } },
+                        new { title = "Frieren", fullurl = "https://en.wikipedia.org/wiki/Frieren", thumbnail = new { source = "https://upload.wikimedia.org/series.png", width = 1600, height = 900 } },
+                        new { title = "frieren", fullurl = "https://en.wikipedia.org/wiki/frieren", thumbnail = new { source = "https://upload.wikimedia.org/portrait.png", width = 700, height = 900 } }
                     };
                     return Task.FromResult(Json(new { query = new { pages } }));
                 }
                 var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([137, 80, 78, 71, 13, 10, 26, 10]) }; response.Content.Headers.ContentType = new("image/png"); return Task.FromResult(response);
             }));
             var choices = await search.SearchAsync("Frieren", default);
-            assert(choices.Single().Title == "Frieren (character)", "Una página de desambiguación se convirtió en referencia.");
-            var reference = choices.Single();
+            assert(choices[0].Title == "Frieren (character)" && choices[0].Width == 800 && choices[0].Height == 1000, "No se leyeron las dimensiones de la referencia o se eligió otra página.");
+            assert(choices[1].Title == "frieren" && !VisualReferenceSearch.LooksLikeScene(choices[1]) && VisualReferenceSearch.LooksLikeScene(choices[2]), "Una escena horizontal se prefiere sobre una imagen del personaje.");
+            var reference = choices[0];
             var file = await search.DownloadAsync(reference, Path.Combine(root, "web-references"), default);
             assert(sawQuery && File.Exists(file), "No se obtuvo la referencia por el protocolo previsto.");
             var paths = new AppPaths(Path.Combine(root, "web-provenance")); var store = new VisualJobStore(paths); store.Save(new() { OnlineReference = reference });

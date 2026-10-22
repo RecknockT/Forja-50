@@ -273,7 +273,6 @@ public sealed class VisualPane : UserControl
             var side = imageQuality.SelectedIndex switch { 1 => 1536, 2 => 2048, _ => 1024 };
             var (width, height) = size.SelectedIndex switch { 1 => (side, side * 3 / 4), 2 => (side * 3 / 4, side), _ => (side, side) };
             var kind = (VisualTask)task.SelectedIndex;
-            if (kind == VisualTask.Edit && reference is not null && referencePixels is { } pixels) (width, height) = VisualSizes.ForEdit(pixels.Width, pixels.Height);
             var frames = duration.SelectedIndex == 1 ? 121 : 73;
             if (kind == VisualTask.Animation) (width, height) = VisualAnimation.Dimensions(size.SelectedIndex);
             if (kind != VisualTask.Animation) { visual.Width = width; visual.Height = height; }
@@ -305,7 +304,7 @@ public sealed class VisualPane : UserControl
                     ct.ThrowIfCancellationRequested();
                     if (selection is null) { status("Generación cancelada antes de usar la GPU."); return; }
                     chosenReference = selection.File; discovered = selection.Source;
-                    if (chosenReference is not null) { LoadPreview(chosenReference); resultTitle.Text = "Referencia elegida"; }
+                    if (chosenReference is not null) { referencePixels = ReadPixels(chosenReference) ?? referencePixels; LoadPreview(chosenReference); resultTitle.Text = "Referencia elegida"; }
                     ShowOnlineSource(discovered);
                     if (discovered is null) webStatus.Text = chosenReference is null ? "Elegiste crear sin referencia." : "Se utiliza la referencia de tu PC, sin subirla a internet.";
                     }
@@ -321,6 +320,10 @@ public sealed class VisualPane : UserControl
             }
             else if (kind == VisualTask.Image) { if (chosenReference is null) ShowOnlineSource(null); webStatus.Text = chosenReference is null ? "Creación sin búsqueda en internet." : "Se usa la imagen seleccionada como referencia del personaje."; }
             var lookupNote = webStatus.Text;
+            // A single reference defines the framing, as HiDream's official workflow does: the model
+            // copies a wide reference (a series cover, a landscape) when the target is padded to another shape.
+            if (kind != VisualTask.Animation && chosenReference is not null && referencePixels is { } frame)
+            { (width, height) = VisualSizes.ForEdit(frame.Width, frame.Height); request = request with { Width = width, Height = height }; request.Validate(); }
             PreparedPrompt? prepared = null;
             if (visual.EnhancePrompt)
             {
@@ -368,6 +371,15 @@ public sealed class VisualPane : UserControl
         catch (Exception ex) { status("No se pudo elegir la referencia: " + ex.Message); }
     }
     private bool IsOwnedExistingResult(string file) => StorageCleanup.Within(Path.GetFullPath(file), paths.VisualOutputs) && File.Exists(file);
+    private static (int Width, int Height)? ReadPixels(string file)
+    {
+        try
+        {
+            using var stream = File.OpenRead(file); var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+            return (decoder.Frames[0].PixelWidth, decoder.Frames[0].PixelHeight);
+        }
+        catch (Exception ex) when (ex is IOException or NotSupportedException or System.IO.FileFormatException) { return null; }
+    }
     private void ShowOnlineSource(VisualReference? source)
     { usedSource = source; onlineReference = source; webStatus.Text = source is null ? "" : "Referencia original: " + source.Title + " · Wikipedia"; webSource.Visibility = source is not null ? Visibility.Visible : Visibility.Collapsed; }
     // Keeps the source visible in the result without turning it into the current reference metadata.
