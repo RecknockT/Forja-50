@@ -13,6 +13,8 @@ public sealed class StorageWindow : Window
     private readonly Button delete = new() { Content = "Eliminar seleccionados", IsEnabled = false };
     private readonly Dictionary<StorageEntry, CheckBox> choices = [];
     private bool working;
+    private bool deleting, closed;
+    private readonly CancellationTokenSource inspection = new();
     private readonly Func<Task>? releaseBrowser;
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task Ready => ready.Task;
@@ -45,7 +47,8 @@ public sealed class StorageWindow : Window
         var close = new Button { Content = uninstall ? "Continuar desinstalación" : "Cerrar" }; close.Click += (_, _) => Close(); buttons.Children.Add(close);
         root.Children.Add(new ScrollViewer { Content = entries, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         delete.Click += async (_, _) => await DeleteAsync();
-        Closing += (_, e) => { if (working) e.Cancel = true; };
+        Closing += (_, e) => { if (deleting) e.Cancel = true; else inspection.Cancel(); };
+        Closed += (_, _) => { closed = true; };
         Loaded += async (_, _) => await ReloadAsync();
     }
     private async Task ReloadAsync()
@@ -53,7 +56,8 @@ public sealed class StorageWindow : Window
         working = true; delete.IsEnabled = false; status.Text = "Calculando espacio...";
         try
         {
-            var plan = await Task.Run(cleanup.Inspect);
+            var plan = await Task.Run(() => cleanup.Inspect(inspection.Token));
+            if (closed || inspection.IsCancellationRequested) return;
             entries.Children.Clear(); choices.Clear();
             foreach (var item in plan)
             {
@@ -66,7 +70,8 @@ public sealed class StorageWindow : Window
             delete.IsEnabled = choices.Any(pair => pair.Value.IsEnabled);
             status.Text = "No se borró nada. Marcá las categorías que quieras eliminar.";
         }
-        catch (Exception ex) { status.Text = "No se pudo revisar el almacenamiento: " + ex.Message; }
+        catch (OperationCanceledException) when (inspection.IsCancellationRequested) { }
+        catch (Exception ex) { if (!closed) status.Text = "No se pudo revisar el almacenamiento: " + ex.Message; }
         finally { working = false; ready.TrySetResult(); }
     }
     private async Task DeleteAsync()
@@ -76,7 +81,7 @@ public sealed class StorageWindow : Window
         if (selected.Length == 0) { status.Text = "Elegí al menos una categoría."; return; }
         var summary = string.Join("\n", selected.Select(e => $"• {e.Title} ({e.Bytes / 1e9:0.00} GB)"));
         if (MessageBox.Show(this, "Se eliminarán permanentemente estas categorías:\n\n" + summary + "\n\nLas rutas aparecen en la ventana. Esta acción no se puede deshacer. ¿Continuar?", "Confirmar limpieza", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        working = true; delete.IsEnabled = false; status.Text = "Eliminando los archivos seleccionados...";
+        working = deleting = true; delete.IsEnabled = false; status.Text = "Eliminando los archivos seleccionados...";
         try
         {
             if (selected.Any(e => e.Category is StorageCategory.Conversations or StorageCategory.Settings))
@@ -87,10 +92,10 @@ public sealed class StorageWindow : Window
             SettingsDeleted |= selected.Any(e => e.Category == StorageCategory.Settings);
             RequiresRefresh |= selected.Any(e => e.Category is StorageCategory.Conversations or StorageCategory.Settings);
             DataDeleted = true;
-            working = false;
+            working = deleting = false;
             await ReloadAsync(); status.Text = "Limpieza completada. Los archivos protegidos se conservaron.";
         }
         catch (Exception ex) { status.Text = "La limpieza no se pudo completar: " + ex.Message + " Los archivos restantes se conservan."; }
-        finally { working = false; delete.IsEnabled = choices.Any(pair => pair.Value.IsEnabled); }
+        finally { working = deleting = false; if (!closed) delete.IsEnabled = choices.Any(pair => pair.Value.IsEnabled); }
     }
 }

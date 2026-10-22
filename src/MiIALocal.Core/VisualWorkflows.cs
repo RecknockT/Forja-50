@@ -5,6 +5,8 @@ public static class VisualWorkflows
     public static Dictionary<string, object> Build(VisualRequest r, string prefix, string? reference = null, string? preparedPrompt = null)
     {
         Validate(r, prefix, reference);
+        if (preparedPrompt is not null && (string.IsNullOrWhiteSpace(preparedPrompt) || preparedPrompt.Length > 12000))
+            throw new InvalidDataException("La descripción revisada debe contener entre 1 y 12000 caracteres.");
         var graph = new Dictionary<string, object>();
         Dictionary<string, object> Node(string id, string type, params (string, object)[] inputs)
         { var values = inputs.ToDictionary(x => x.Item1, x => x.Item2); graph[id] = new { class_type = type, inputs = values }; return values; }
@@ -98,9 +100,15 @@ public static class VisualWorkflows
         void Node(string id, string type, params (string, object)[] inputs)
         { var values = inputs.ToDictionary(x => x.Item1, x => x.Item2); graph[id] = new { class_type = type, inputs = values }; }
         object[] Link(string id, int slot = 0) => [id, slot];
-        Node("30", "CLIPLoader", ("clip_name", VisualCatalog.PromptAssistant.Asset.FileName), ("type", "stable_diffusion"), ("device", "default"));
+        Node("30", "ForjaAssistantLoader", ("clip_name", VisualCatalog.PromptAssistant.Asset.FileName));
         var preparation = AddTextGenerate(graph, instruction, hasReference, seed);
-        if (hasReference) preparation["image"] = Link("21");
+        if (hasReference)
+        {
+            // The assistant only needs a bounded preview; keep the detailed
+            // reference in node 21 for HiDream without doubling vision memory.
+            Node("22", "ForjaFitReference", ("image", Link("20")), ("width", 1024), ("height", 1024));
+            preparation["image"] = Link("22");
+        }
     }
 
     private static Dictionary<string, object> AddTextGenerate(Dictionary<string, object> graph, string instruction, bool hasReference, long seed)
@@ -109,7 +117,7 @@ public static class VisualWorkflows
         var preparation = new Dictionary<string, object>
         {
             ["clip"] = Link("30"), ["prompt"] = instruction, ["system_prompt"] = hasReference ? VisualPrompts.Reference : VisualPrompts.Create,
-            ["max_length"] = 1024, ["sampling_mode"] = "on", ["sampling_mode.temperature"] = 0.7, ["sampling_mode.top_k"] = 64, ["sampling_mode.top_p"] = 0.95,
+            ["max_length"] = 512, ["sampling_mode"] = "on", ["sampling_mode.temperature"] = 0.7, ["sampling_mode.top_k"] = 64, ["sampling_mode.top_p"] = 0.95,
             ["sampling_mode.min_p"] = 0.05, ["sampling_mode.repetition_penalty"] = 1.05, ["sampling_mode.seed"] = seed, ["sampling_mode.presence_penalty"] = 0.0,
             ["thinking"] = false, ["use_default_template"] = true, ["mtp"] = "off"
         };

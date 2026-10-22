@@ -27,6 +27,13 @@ public partial class App : Application
                 var storage = new StorageWindow(data, data.LoadSettings(), true);
                 MainWindow = storage;
                 MainWindow.Closed += (_, _) => Shutdown(0);
+                if (Argument("--storage-close-during-inspection") is { } closeResult && Argument("--data-root") is not null)
+                    storage.Loaded += (_, _) =>
+                    {
+                        storage.Close();
+                        AppPaths.AtomicWrite(closeResult, System.Text.Json.JsonSerializer.Serialize(new { closed = !storage.IsVisible }));
+                        if (storage.IsVisible) Shutdown(2);
+                    };
                 if (Argument("--storage-smoke-result") is { } result && Argument("--data-root") is not null)
                     storage.Loaded += async (_, _) =>
                     {

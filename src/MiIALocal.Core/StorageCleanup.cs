@@ -11,13 +11,15 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
     private string[] Imported => new[] { settings.ImportedModel, settings.ImportedNinferModel, settings.NinferEnginePath, paths.VisualInputs, paths.VisualOutputs }
         .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => Path.GetFullPath(p, paths.Root)).ToArray();
 
-    public StorageEntry[] Inspect()
+    public StorageEntry[] Inspect(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var models = new List<string>(); var partials = new List<string>();
         var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings)))
             .Concat(VisualCatalog.All.Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!)));
         foreach (var (asset, modelDirectory) in managedModels)
         {
+            ct.ThrowIfCancellationRequested();
             var file = Path.Combine(modelDirectory, asset.FileName);
             if (Imported.Any(p => p.Equals(file, Comparison))) continue;
             if (File.Exists(file)) models.Add(file);
@@ -36,36 +38,39 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
         foreach (var file in Directory.EnumerateFiles(paths.Root, "settings*.json"))
             if (Path.GetFileName(file) == "settings.json" || Path.GetFileName(file).StartsWith("settings.invalid-", StringComparison.Ordinal) || Path.GetFileName(file).StartsWith("settings.json.before-native-", StringComparison.Ordinal)) configuration.Add(file);
         return [
-            Entry(StorageCategory.Models, "Modelos descargados por Forja", models),
-            Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime]),
-            Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials)),
-            Entry(StorageCategory.Conversations, "Conversaciones e historial de trabajos", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md", "visual/jobs", "visual/user" }.Select(p => Path.Combine(paths.Root, p))),
-            Entry(StorageCategory.Settings, "Configuración y registros", configuration),
-            Entry(StorageCategory.GitHub, "Sesión de GitHub de Forja", [paths.GitHubCredentialStore, paths.GitHubAccountFile])
+            Entry(StorageCategory.Models, "Modelos descargados por Forja", models, ct),
+            Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime], ct),
+            Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials), ct),
+            Entry(StorageCategory.Conversations, "Conversaciones e historial de trabajos", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md", "visual/jobs", "visual/user" }.Select(p => Path.Combine(paths.Root, p)), ct),
+            Entry(StorageCategory.Settings, "Configuración y registros", configuration, ct),
+            Entry(StorageCategory.GitHub, "Sesión de GitHub de Forja", [paths.GitHubCredentialStore, paths.GitHubAccountFile], ct)
         ];
     }
-    private StorageEntry Entry(StorageCategory category, string title, IEnumerable<string> candidates)
+    private StorageEntry Entry(StorageCategory category, string title, IEnumerable<string> candidates, CancellationToken ct)
     {
         var targets = candidates.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).Where(p => File.Exists(p) || Directory.Exists(p)).ToArray();
         try
         {
             long bytes = 0;
-            foreach (var target in targets) { Validate(target); bytes += InspectTree(target); }
+            var ancestors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var target in targets) { ct.ThrowIfCancellationRequested(); bytes += InspectTree(target, ct, ancestors); }
             return new(category, title, targets, bytes, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return new(category, title, targets, 0, ex.Message); }
     }
-    private void CheckAncestors(string path)
+    private void CheckAncestors(string path, HashSet<string>? inspected = null)
     {
         for (var current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
         {
+            if (inspected?.Contains(current) == true) break;
             if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) throw new IOException("Se conserva una ruta con enlaces: " + current);
             if (Directory.Exists(Path.Combine(current, ".git")) || File.Exists(Path.Combine(current, ".git"))) throw new IOException("Se conserva un repositorio Git: " + current);
+            inspected?.Add(current);
         }
     }
-    private void Validate(string target)
+    private void Validate(string target, HashSet<string>? inspected = null)
     {
-        CheckAncestors(target);
+        CheckAncestors(target, inspected);
         if (!string.IsNullOrWhiteSpace(settings.LastProject))
         {
             var project = Path.GetFullPath(settings.LastProject, paths.Root);
@@ -73,15 +78,16 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
         }
         if (Imported.Any(p => Within(p, target) || Within(target, p))) throw new IOException("Se conserva un archivo importado o su carpeta: " + target);
     }
-    private long InspectTree(string target)
+    private long InspectTree(string target, CancellationToken ct, HashSet<string> inspected)
     {
-        Validate(target);
+        ct.ThrowIfCancellationRequested();
+        Validate(target, inspected);
         if (File.Exists(target)) return new FileInfo(target).Length;
         long bytes = 0;
         foreach (var child in Directory.EnumerateFileSystemEntries(target))
         {
             if (Path.GetFileName(child).Equals(".git", Comparison)) throw new IOException("Se conserva una carpeta que contiene un repositorio: " + target);
-            bytes += InspectTree(child);
+            bytes += InspectTree(child, ct, inspected);
         }
         return bytes;
     }

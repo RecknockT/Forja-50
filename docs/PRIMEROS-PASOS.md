@@ -1,4 +1,4 @@
-# Primeros pasos con Forja 50
+﻿# Primeros pasos con Forja 50
 
 Versión de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) o RTX 3090 (24 GB), con 32 GB de RAM. La prueba de inferencia de los nuevos perfiles en Forja está pendiente.
 
@@ -78,3 +78,10 @@ Al desinstalar con Setup, elegí si querés abrir esta misma limpieza antes de q
 **Diagnóstico y registros** abre los mensajes de la aplicación. Si falta WebView2 Runtime, instalalo desde la [página oficial de Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/). Su preparación automática sigue pendiente.
 
 El análisis de fuentes y la diferencia entre Windows nativo y WSL2 están en [NInfer en Windows](NINFER-WINDOWS.md).
+
+
+## Correcciones 0.4.1
+
+El asistente visual se carga en la GPU seleccionada aun con ahorro de memoria. Si no completa la preparación en cinco minutos, se detiene e informa cómo continuar; podés desactivar el asistente y usar tu descripción. El texto preparado se puede revisar antes de generar. Detener libera el proceso y sus modelos. La velocidad de esta corrección todavía requiere una nueva medición física.
+
+Podés cerrar Administrar almacenamiento mientras calcula el espacio; eso cancela el cálculo y conserva los datos. Durante una eliminación confirmada, esperá a que termine. La desinstalación silenciosa conserva datos por diseño.

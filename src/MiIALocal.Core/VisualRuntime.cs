@@ -38,7 +38,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             worker = OwnedProcess.Start(paths.ComfyPython, Arguments(paths, gpu, port), paths.ComfyRoot, Path.Combine(paths.Logs, "visual-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")),
                 new Dictionary<string, string> { ["FORJA_VISUAL_TOKEN"] = token, ["PYTHONUTF8"] = "1", ["PYTHONNOUSERSITE"] = "1", ["HF_HUB_OFFLINE"] = "1", ["TRANSFORMERS_OFFLINE"] = "1" });
             await worker.WaitForReadyAsync(http, new($"http://127.0.0.1:{port}/forja/health"), "Bearer " + token, TimeSpan.FromMinutes(3), ct);
-            client = new(http, new($"http://127.0.0.1:{port}/"), token);
+            client = new(http, new($"http://127.0.0.1:{port}/"), token, () => worker is { HasExited: false });
             using var health = await client.GetAsync("forja/health", ct);
             if (!health.RootElement.TryGetProperty("forja", out var guard) || !guard.GetBoolean()) throw new IOException("El motor visual no confirmó su aislamiento.");
         }
@@ -56,8 +56,9 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             if (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || !promptAssistant) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             var input = StageReference(reference);
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
             var text = await client.PreparePromptAsync(request, input, progress, ct);
-            return new(text, input);
+            return new(text, input, elapsed.Elapsed.TotalSeconds);
         }
         catch
         {
@@ -84,7 +85,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(45));
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token, true, prepared?.Text);
-            job.PreparedPrompt = client.LastPreparedPrompt; job.TotalSeconds = elapsed.Elapsed.TotalSeconds;
+            job.PreparedPrompt = client.LastPreparedPrompt; job.TotalSeconds = elapsed.Elapsed.TotalSeconds + (prepared?.PreparationSeconds ?? 0);
             job.Status = "Completado"; store.Save(job); return job;
         }
         catch (Exception ex)
@@ -120,23 +121,32 @@ public sealed class ComfyClient
     private readonly HttpClient http;
     private readonly Uri endpoint;
     private readonly string token;
-    public ComfyClient(HttpClient http, Uri endpoint, string token)
+    private readonly Func<bool>? workerAlive;
+    public ComfyClient(HttpClient http, Uri endpoint, string token, Func<bool>? workerAlive = null)
     {
         if (endpoint.Scheme != "http" || endpoint.Host != "127.0.0.1" || endpoint.AbsolutePath != "/" || !string.IsNullOrEmpty(endpoint.UserInfo)) throw new ArgumentException("El motor visual debe ser local.");
-        this.http = http; this.endpoint = endpoint; this.token = token;
+        this.http = http; this.endpoint = endpoint; this.token = token; this.workerAlive = workerAlive;
     }
     public async Task<JsonDocument> GetAsync(string route, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, route)); request.Headers.Authorization = new("Bearer", token);
-        using var response = await http.SendAsync(request, ct); response.EnsureSuccessStatusCode();
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            using var response = await http.SendAsync(request, deadline.Token); response.EnsureSuccessStatusCode();
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new IOException("El motor visual no responde. Detené y volvé a iniciar la IA; tus archivos se conservan.", ex); }
     }
     /// <summary>Run only the assistant stage so its caption can be reviewed before diffusion starts.</summary>
-    public async Task<string> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true)
+    public async Task<string> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, TimeSpan? timeout = null)
     {
         LastPreparedPrompt = null;
         var graph = VisualWorkflows.BuildPrepare(request, reference);
-        var result = await RunAsync(graph, progress, ct, useSocket, "Preparando la descripción; el asistente puede tardar unos minutos");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(timeout ?? TimeSpan.FromMinutes(5));
+        JsonElement result;
+        try { result = await RunAsync(graph, progress, deadline.Token, useSocket, "Preparando la descripción con el asistente en GPU"); }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new IOException("El asistente agotó el tiempo de preparación. Podés desactivarlo y usar tu descripción original, o reiniciar la IA.", ex); }
         var text = ReadPreparedPrompt(result);
         if (text is null) throw new IOException("El asistente no devolvió una descripción utilizable. Revisá Diagnóstico.");
         LastPreparedPrompt = text;
@@ -171,8 +181,10 @@ public sealed class ComfyClient
         if (useSocket)
         {
             socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
-            try { await socket.ConnectAsync(new($"ws://127.0.0.1:{endpoint.Port}/ws?clientId={clientId}"), ct); socketTask = ObserveProgressAsync(socket, progress, socketLifetime.Token); }
+            using var connection = CancellationTokenSource.CreateLinkedTokenSource(ct); connection.CancelAfter(TimeSpan.FromSeconds(5));
+            try { await socket.ConnectAsync(new($"ws://127.0.0.1:{endpoint.Port}/ws?clientId={clientId}"), connection.Token); socketTask = ObserveProgressAsync(socket, progress, socketLifetime.Token); }
             catch (WebSocketException) { /* History polling remains available. */ }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { /* History polling remains available. */ }
         }
         try
         {
@@ -187,6 +199,7 @@ public sealed class ComfyClient
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
+                if (workerAlive is not null && !workerAlive()) throw new IOException("El motor visual se cerró durante la tarea. Revisá Diagnóstico y volvé a iniciar la IA.");
                 using var history = await GetAsync("history/" + promptId, ct);
                 if (history.RootElement.TryGetProperty(promptId, out var result) && result.TryGetProperty("status", out var status))
                 {

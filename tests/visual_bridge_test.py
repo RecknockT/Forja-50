@@ -52,6 +52,37 @@ except ValueError:
     pass
 print("PASS preparación visual: descripción registrada, liberación del asistente y rechazo de salida vacía")
 
+# Reproduce the LOW_VRAM policy: generic encoders would run on CPU. Execute our
+# real loader against a test adapter and verify both selected GPU and offload.
+selected_gpu = types.SimpleNamespace(type="cuda", index=2)
+cpu = types.SimpleNamespace(type="cpu")
+management.get_torch_device = lambda: selected_gpu
+management.text_encoder_device = lambda: cpu
+loaded = []
+sd = types.SimpleNamespace(CLIPType=types.SimpleNamespace(STABLE_DIFFUSION="fixture"), load_clip=lambda **kw: loaded.append(kw) or "clip")
+sys.modules["comfy"].sd = sd
+sys.modules["comfy.sd"] = sd
+sys.modules["folder_paths"] = types.SimpleNamespace(get_full_path_or_raise=lambda category, name: "/models/" + name, get_folder_paths=lambda _: [], get_filename_list=lambda _: ["assistant.safetensors"])
+original_torch = sys.modules.get("torch")
+sys.modules["torch"] = types.SimpleNamespace(device=lambda name: cpu if name == "cpu" else selected_gpu)
+unloaded.clear()
+assert bridge.ForjaAssistantLoader().load("assistant.safetensors") == ("clip",)
+assert loaded[0]["model_options"]["load_device"] is selected_gpu
+assert loaded[0]["model_options"]["offload_device"] is cpu
+assert unloaded == ["unload", "cache"]
+management.get_torch_device = lambda: cpu
+try:
+    bridge.ForjaAssistantLoader().load("assistant.safetensors")
+    raise AssertionError("Se ejecutó el asistente silenciosamente en CPU")
+except RuntimeError:
+    pass
+assert len(loaded) == 1
+if original_torch is None:
+    del sys.modules["torch"]
+else:
+    sys.modules["torch"] = original_torch
+print("PASS asistente: GPU seleccionada incluso con LOW_VRAM, offload CPU y liberación entre etapas")
+
 if "--real-gif" in sys.argv:
     import numpy as np
     from PIL import Image

@@ -7,6 +7,15 @@ static class StorageCleanupTests
     {
         async Task<string> Put(string file) { Directory.CreateDirectory(Path.GetDirectoryName(file)!); await File.WriteAllTextAsync(file, "conservar o eliminar según selección"); return file; }
         void Blocked(Action action) { try { action(); } catch (IOException) { return; } throw new Exception("Se permitió una limpieza protegida."); }
+        await test("Limpieza: cancelar el cálculo de espacio conserva los archivos", async () =>
+        {
+            var paths = new AppPaths(Path.Combine(root, "cleanup-cancel"));
+            var model = await Put(paths.ActiveModelPath(new()));
+            using var cancel = new CancellationTokenSource(); cancel.Cancel();
+            try { new StorageCleanup(paths, new()).Inspect(cancel.Token); throw new Exception("El cálculo ignoró la cancelación."); }
+            catch (OperationCanceledException) { }
+            assert(File.Exists(model), "Cancelar el cálculo borró un modelo.");
+        });
         await test("Limpieza: inspección sin borrar y categorías independientes", async () =>
         {
             var paths = new AppPaths(Path.Combine(root, "cleanup-select")); var settings = new AppSettings();

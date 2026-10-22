@@ -14,6 +14,11 @@ if (!$process.WaitForExit(30000)) { Stop-Process -Id $process.Id; throw 'La vent
 $report = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
 if ($process.ExitCode -ne 0 -or $report.error -or $report.selected -ne 0 -or $report.settingsDeleted -or !(Test-Path -LiteralPath $settings) -or (Get-FileHash -LiteralPath $model).Hash -ne $before) { throw 'Cerrar la limpieza modificó los datos o seleccionó opciones por defecto.' }
 Write-Output 'PASS almacenamiento: cancelar ventana de desinstalación conserva modelo y ajustes'
+$closeResult = Join-Path $root 'close-during-inspection.json'
+$process = Start-Process -FilePath $Aplicacion -ArgumentList @('--data-root',('"'+$root+'"'),'--uninstall-cleanup','--storage-close-during-inspection',('"'+$closeResult+'"')) -WindowStyle Hidden -PassThru
+if (!$process.WaitForExit(15000)) { Stop-Process -Id $process.Id; throw 'El cálculo de almacenamiento bloqueó el cierre.' }
+if ($process.ExitCode -ne 0 -or !(Get-Content -LiteralPath $closeResult -Raw | ConvertFrom-Json).closed -or (Get-FileHash -LiteralPath $model).Hash -ne $before) { throw 'Cerrar mientras calcula no conserva los archivos o bloquea la desinstalación.' }
+Write-Output 'PASS almacenamiento: cerrar mientras calcula cancela la inspección sin bloquear la desinstalación'
 $sha = [Security.Cryptography.SHA256]::Create()
 try { $identity = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($root)))).Replace('-','').Substring(0,20) } finally { $sha.Dispose() }
 $mutex = [Threading.Mutex]::new($true, ('Local\MiIALocal-'+$identity))

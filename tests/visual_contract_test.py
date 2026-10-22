@@ -50,7 +50,7 @@ async def check():
         try:
             for node in graph.values():
                 cls = nodes.NODE_CLASS_MAPPINGS[node["class_type"]]
-                if node["class_type"] in ("CheckpointLoaderSimple", "CLIPLoader", "VAELoader", "LoadImage"):
+                if node["class_type"] in ("CheckpointLoaderSimple", "CLIPLoader", "VAELoader", "LoadImage", "ForjaAssistantLoader"):
                     schema = cls.INPUT_TYPES()
                     for key, value in node["inputs"].items():
                         descriptor = schema.get("required", {}).get(key)

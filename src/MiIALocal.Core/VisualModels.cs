@@ -54,7 +54,7 @@ public static class VisualCatalog
 }
 
 /// <summary>Assistant caption reviewed by the person plus the staged input it was prepared with.</summary>
-public sealed record PreparedPrompt(string Text, string? StagedReference);
+public sealed record PreparedPrompt(string Text, string? StagedReference, double PreparationSeconds = 0);
 
 public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, int Height, long Seed, int Frames = 73, int Steps = 20, bool HighPrecision = false, bool EnhancePrompt = false)
 {

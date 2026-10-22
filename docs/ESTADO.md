@@ -1,12 +1,21 @@
-# Estado verificable de Forja 50
+﻿# Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.4.0.
+22 de octubre de 2026 · desarrollo 0.4.1.
+
+## Correcciones de HiDream y limpieza · 0.4.1
+
+- Cargador propio del asistente: selecciona explícitamente la GPU del motor y permite descargar pesos a RAM entre etapas. Conserva LOW_VRAM para Wan/difusión; evita la ruta genérica que colocaba Gemma en CPU. Prueba ejecutando el cargador real con adaptadores: selección GPU 2, offload CPU, liberación previa y rechazo de fallback silencioso a CPU.
+- Preparación acotada a cinco minutos; cancelación voluntaria diferenciada de timeout. Detección de cierre del proceso y espera de conexión de progreso acotada. Texto limitado a 512 tokens; descripción revisada vacía o excesiva rechazada antes de enviar la tarea.
+- El tiempo del motor incluye la preparación de la descripción usada, sin contar el tiempo de revisión humana. Cancelar la revisión se describe como cancelación de imagen, no como ausencia de uso de GPU.
+- Cálculo de almacenamiento cancelable al cerrar: permite continuar la desinstalación. Se reutilizan comprobaciones de ancestros dentro del cálculo, pero cada borrado conserva validación fresca de enlaces, repositorios e importaciones.
+- Pruebas locales sin modelos: núcleo, puente y ventanas. Los paquetes se generan mediante CI. No se reinstala la app ni se descargan modelos en la PC del usuario.
+- Pruebas físicas históricas de HiDream Dev FP8 sin asistente en RTX 5080/32 GB: 1024 en 15,8 s (primera carga), 2048 en 19,8 s y edición a 2048 en 48,9 s; pico total muestreado 11918 MiB incluyendo otras aplicaciones. La edición cambió también iluminación y otras partes de la ropa. No son cifras del asistente corregido ni garantías de calidad/identidad. Pendiente medir el nuevo cargador y validación física 5070 Ti/3090.
 
 ## HiDream-O1 Dev · 0.4.0 en desarrollo
 
 - Sustituye la preparación no publicada de FLUX 3: descarga pública de HiDream sin token/cuenta, checkpoint nativo FP8 escalado para 5080/5070 Ti y BF16 para 3090. Licencia MIT, revisión y hash fijados.
 - Flujo nativo de 28 pasos LCM/normal y CFG 1. Referencia real a HiDream, descripción original/preparada y tiempos conservados en el historial. Asistente Gemma 4 E4B INT8 opcional; liberación entre etapas. Calidad 1024/1536/2048, con formatos independientes de Wan.
-- Revisión previa de la descripción: con el asistente activo y la revisión habilitada (valor inicial), Forja ejecuta solo la etapa de texto y muestra el resultado editable antes de cargar la difusión. Se puede regenerar, volver al pedido original o cancelar sin usar la GPU; el texto final es el que recibe HiDream y queda en el historial, sin repetir el asistente. Con la revisión desactivada se conserva el flujo de una sola pasada. Pruebas de grafo sin asistente duplicado, contrato HTTP de preparación y revisión real de la ventana; la captura de pantalla y la validación física siguen pendientes.
+- Revisión previa de la descripción: con el asistente activo y la revisión habilitada (valor inicial), Forja ejecuta solo la etapa de texto y muestra el resultado editable antes de cargar la difusión. Se puede regenerar, volver al pedido original o cancelar antes de iniciar la difusión; el texto final es el que recibe HiDream y queda en el historial, sin repetir el asistente. Con la revisión desactivada se conserva el flujo de una sola pasada. Pruebas de grafo sin asistente duplicado, contrato HTTP de preparación y revisión real de la ventana; la captura de pantalla y la validación física siguen pendientes.
 - Modelos anteriores conservados y registrados para limpieza explícita. Instalador sin pesos; importación verificada, pausa y reanudación existentes. Licencia HiDream separada de aceptaciones anteriores.
 - Compilación y núcleo aprobados; cinco contratos de grafos aprobados contra ComfyUI real en CPU, sin pesos. Pendientes pruebas físicas, interfaz y paquete de esta versión. No equivale a validación en las tres placas.
 - [Investigación y plan](HIDREAM-MIGRACION.md). Dev-2604 sigue como candidato de comparación; no es el checkpoint Dev original de Comfy ni se anuncia como probado.

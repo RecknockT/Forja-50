@@ -325,7 +325,7 @@ public sealed class VisualPane : UserControl
                 var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct);
                 var reviewed = PreparedPromptWindow.Show(Window.GetWindow(this), current.Text, request.Prompt, chosenReference is not null,
                     async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token)).Text, ct);
-                if (reviewed is null) { status("Generación cancelada antes de usar la GPU. Tu pedido sigue en el cuadro de texto."); return; }
+                if (reviewed is null) { status("Generación de imagen cancelada. Tu pedido sigue en el cuadro de texto."); return; }
                 prepared = current with { Text = reviewed };
             }
             status(kind == VisualTask.Animation ? "Preparando la animación; la primera carga puede tardar…" : "Preparando tu imagen…");

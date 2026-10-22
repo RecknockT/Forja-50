@@ -18,7 +18,9 @@ static class VisualTests
                 assert(graph.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 28, "Se cambió el calendario destilado.");
                 assert(graph.GetProperty("23").GetProperty("inputs").GetProperty("images.image_1")[0].GetString() == "21", "La referencia no llega a HiDream.");
                 assert(graph.TryGetProperty("31", out _) == assistant, "Asistente obligatorio o ignorado.");
-                if (assistant) assert(graph.GetProperty("31").GetProperty("inputs").GetProperty("image")[0].GetString() == "21", "El asistente no ve la referencia.");
+                if (assistant) assert(graph.GetProperty("31").GetProperty("inputs").GetProperty("image")[0].GetString() == "22"
+                    && graph.GetProperty("22").GetProperty("inputs").GetProperty("width").GetInt32() == 1024, "El asistente no ve una referencia acotada.");
+                if (assistant) assert(graph.GetProperty("30").GetProperty("class_type").GetString() == "ForjaAssistantLoader", "La carga genérica puede enviar el asistente a CPU.");
                 assert(graph.GetProperty("4").GetProperty("inputs").GetProperty("text")[0].GetString() == "32", "No se registra el pedido utilizado.");
             }
             var plain = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 2048, 2048, 1), new string('a', 32)));
@@ -37,7 +39,7 @@ static class VisualTests
             var prepare = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Edit, "Cambiá el brazo", 1024, 1024, 42, EnhancePrompt: true), "reference.png"));
             File.WriteAllText(Path.Combine(root, "hidream-prepare-graph.json"), prepare.GetRawText());
             assert(prepare.GetProperty("31").GetProperty("class_type").GetString() == "TextGenerate", "La preparación no usa el asistente.");
-            assert(prepare.GetProperty("31").GetProperty("inputs").GetProperty("image")[0].GetString() == "21", "La preparación no analiza la referencia.");
+            assert(prepare.GetProperty("31").GetProperty("inputs").GetProperty("image")[0].GetString() == "22", "La preparación no analiza la referencia.");
             assert(!prepare.TryGetProperty("1", out _) && !prepare.TryGetProperty("11", out _) && !prepare.TryGetProperty("13", out _), "La preparación carga la difusión o escribe resultados.");
             assert(VisualWorkflows.BuildPrepare(new(VisualTask.Image, "Robot", 1024, 1024, 1, EnhancePrompt: true), null).Values.Count == 3, "La preparación sin referencia ejecuta nodos de más.");
             try { VisualWorkflows.BuildPrepare(new(VisualTask.Image, "Robot", 1024, 1024, 1), null); throw new Exception("Se preparó una descripción con el asistente desactivado."); } catch (InvalidDataException) { }
@@ -194,6 +196,8 @@ static class VisualTests
             Reject(() => VisualWorkflows.Build(new(VisualTask.Animation, "x", 1024, 1024, 1), new string('a', 32)));
             Reject(() => VisualWorkflows.Build(new(VisualTask.Image, "x", 1024, 1024, 1), "../../proyecto"));
             Reject(() => new VisualRequest(VisualTask.Animation, "x", 768, 448, 1, Frames: 120).Validate());
+            Reject(() => VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 1), new string('a', 32), preparedPrompt: " "));
+            Reject(() => VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 1), new string('a', 32), preparedPrompt: new string('x', 12001)));
             try { _ = new ComfyClient(new(), new("http://example.com/"), "secret"); throw new Exception("Se admitió un motor externo."); } catch (ArgumentException) { }
             return Task.CompletedTask;
         });
@@ -304,6 +308,17 @@ static class VisualTests
             var client = new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture");
             var files = await client.GenerateAsync(request, id, null, output, null, default, false, "Texto revisado");
             assert(submitted && files.Single() == file && client.LastPreparedPrompt == "Texto revisado", "Se perdió el texto revisado en el historial.");
+        });
+        await test("Visual: espera del asistente acotada y caída del motor detectada sin esperar 45 minutos", async () =>
+        {
+            var request = new VisualRequest(VisualTask.Image, "Robot", 1024, 1024, 1, EnhancePrompt: true);
+            var graph = VisualWorkflows.BuildPrepare(request, null);
+            var nodes = graph.Values.Select(n => JsonSerializer.SerializeToElement(n).GetProperty("class_type").GetString()!).Distinct().ToDictionary(x => x, _ => new { });
+            using var http = new HttpClient(new AsyncHandler((message, _) => Task.FromResult(message.RequestUri!.AbsolutePath switch { "/object_info" => Json(nodes), "/prompt" => Json(new { prompt_id = Guid.NewGuid().ToString() }), _ => Json(new { }) })));
+            try { await new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture").PreparePromptAsync(request, null, null, default, false, TimeSpan.FromMilliseconds(100)); throw new Exception("La espera no terminó."); }
+            catch (IOException ex) { assert(ex.Message.Contains("tiempo de preparación"), "El timeout se confunde con cancelación."); }
+            try { await new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture", () => false).PreparePromptAsync(request, null, null, default, false); throw new Exception("No se detectó el cierre del proceso."); }
+            catch (IOException ex) { assert(ex.Message.Contains("se cerró"), "Falta el diagnóstico de cierre del motor."); }
         });
         await test("Visual: no aceptar salidas fuera de la carpeta o de otro trabajo", () =>
         {
