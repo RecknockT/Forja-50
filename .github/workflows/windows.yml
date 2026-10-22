@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.8: el asistente descriptivo queda en Gemma 4 E4B INT8, el mismo escalon que usa la plantilla oficial de ComfyUI. Se adopta su limite de 2048 tokens (antes 512) para que la descripcion no se corte, y mtp pasa a automatico. Sin modelos ni GPU en CI; validacion fisica pendiente.
+
             0.4.7: la edicion usa el modelo Full que recomienda su autor, con la receta oficial de ComfyUI: 40 pasos, CFG 5, ModelNoiseScale 8, dpmpp_2m_sde_gpu y suavizado de costuras. Se puede volver a Dev desde la misma casilla; la animacion no lo exige. Aviso al elegir una imagen de menos de 1,7 MP para editar. Sin modelos ni GPU en CI; validacion fisica pendiente.
 
             0.4.6: corrige el ruido de 0.4.5. Con una referencia, el lienzo toma su proporcion ajustada a la resolucion entrenada mas cercana (~4 MP) en lugar del tamano exacto de la miniatura, que dejaba al modelo fuera de distribucion. Se conserva el encuadre y el presupuesto de pixeles. Sin modelos ni GPU en CI; validacion fisica pendiente.

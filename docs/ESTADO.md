@@ -1,6 +1,13 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.7.
+22 de octubre de 2026 · desarrollo 0.4.8.
+
+## Asistente descriptivo: comparación y ajustes · 0.4.8
+
+- Comparado con la plantilla oficial de ComfyUI (subgrafo «Prompt Enhancement» del flujo Dev) y con el agente del autor: la familia y el escalón coinciden (Gemma 4 E4B; el agente del autor usa un 31B, no viable en 16 GB de VRAM y 32 GB de RAM). La plantilla oficial usa `gemma4_e4b_it_fp8_scaled`, `max_length` 2048, temperatura 0,7, `top_p` 0,95, `min_p` 0,05, `thinking` desactivado y `mtp` por defecto; arma la plantilla a mano con el prompt SCALIST del autor y extrae el campo `prompt` de una salida JSON.
+- Se adoptaron dos diferencias: `max_length` de 512 a **2048** (evita que la descripción se corte si el modelo divaga; no cuesta tiempo cuando termina antes) y `mtp` de «off» a **«auto»** (usa decodificación especulativa si el checkpoint trae cabezas MTP).
+- Se conserva el archivo **int8_convrot** (7,54 GB, con rotación) por precisión y porque ya está descargado; la plantilla oficial usa el fp8 escalado (8,44 GB), más rápido en RTX 50. También se conservan el meta-prompt en español, la revisión editable, la garantía del nombre pedido y el paso de la imagen de referencia.
+- Pruebas: 91 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Pendiente la prueba física.
 
 ## Edición con el modelo Full · 0.4.7
 

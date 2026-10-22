@@ -132,9 +132,9 @@ public static class VisualWorkflows
         var preparation = new Dictionary<string, object>
         {
             ["clip"] = Link("30"), ["prompt"] = instruction, ["system_prompt"] = systemPrompt,
-            ["max_length"] = 512, ["sampling_mode"] = "on", ["sampling_mode.temperature"] = 0.5, ["sampling_mode.top_k"] = 64, ["sampling_mode.top_p"] = 0.9,
+            ["max_length"] = 2048, ["sampling_mode"] = "on", ["sampling_mode.temperature"] = 0.5, ["sampling_mode.top_k"] = 64, ["sampling_mode.top_p"] = 0.9,
             ["sampling_mode.min_p"] = 0.02, ["sampling_mode.repetition_penalty"] = 1.05, ["sampling_mode.seed"] = seed, ["sampling_mode.presence_penalty"] = 0.0,
-            ["thinking"] = false, ["use_default_template"] = true, ["mtp"] = "off"
+            ["thinking"] = false, ["use_default_template"] = true, ["mtp"] = "auto"
         };
         graph["31"] = new { class_type = "TextGenerate", inputs = preparation };
         return preparation;

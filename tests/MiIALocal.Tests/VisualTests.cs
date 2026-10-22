@@ -84,7 +84,7 @@ static class VisualTests
             assert(createPrompt.Contains("idioma"), "El asistente no entiende el pedido en su idioma.");
             assert(createPrompt.Contains("de los 90"), "Se perdió la regla de estilos generales.");
             assert(createPrompt.Contains("no inventes un paisaje"), "El asistente puede inventar un paisaje que nadie pidió.");
-            assert(assistant.GetProperty("max_length").GetInt32() == 512 && assistant.GetProperty("sampling_mode.temperature").GetDouble() == 0.5
+            assert(assistant.GetProperty("max_length").GetInt32() == 2048 && assistant.GetProperty("sampling_mode.temperature").GetDouble() == 0.5
                 && assistant.GetProperty("sampling_mode.top_p").GetDouble() == 0.9 && assistant.GetProperty("sampling_mode.min_p").GetDouble() == 0.02, "El muestreo del asistente pierde fidelidad.");
             var scene = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "la elfa volando de noche", 1024, 1024, 42, EnhancePrompt: true), prefix, "ref.png", null, "Frieren (character)"));
             assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("referencia elegida"), "La escena con referencia no pide el título de la referencia.");
