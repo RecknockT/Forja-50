@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 param([switch]$Publicar, [string]$CompiladorInstalador)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -30,11 +30,12 @@ $output = Join-Path $projectRoot ('artifacts\paquete-' + (Get-Date -Format 'yyyy
 $appDirectory = Join-Path $output 'app'
 & $dotnetExe publish (Join-Path $projectRoot 'src\MiIALocal.Desktop') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o $appDirectory --nologo
 if ($LASTEXITCODE -ne 0) { throw 'La publicación falló.' }
-foreach ($requiredLicense in @('NOTICE.md','Apache-2.0.txt','ComfyUI-GPL-3.0.txt','SharpCompress-MIT.txt')) {
+foreach ($requiredLicense in @('NOTICE.md','Apache-2.0.txt','ComfyUI-GPL-3.0.txt','SharpCompress-MIT.txt','HiDream-MIT.txt')) {
     if (!(Test-Path -LiteralPath (Join-Path $appDirectory ('licenses\visual\' + $requiredLicense)))) { throw "Falta una licencia obligatoria en el paquete: $requiredLicense" }
 }
 if (Get-ChildItem -LiteralPath $appDirectory -Recurse -File | Where-Object { $_.Extension -in '.ninfer','.part','.safetensors','.gguf' }) { throw 'El paquete contiene archivos de modelo inesperados.' }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\PRIMEROS-PASOS.md') -Destination $appDirectory
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\HIDREAM-MIGRACION.md') -Destination $appDirectory
 [IO.File]::WriteAllText((Join-Path $appDirectory 'portable.flag'), 'Los datos se guardan en la carpeta datos junto al ejecutable.')
 $zip = Join-Path $output "Forja-50-$version-Portable-win-x64.zip"
 Compress-Archive -LiteralPath $appDirectory -DestinationPath $zip

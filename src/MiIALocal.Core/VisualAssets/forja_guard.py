@@ -58,7 +58,7 @@ class ForjaSaveGif:
 class ForjaFitReference:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"image": ("IMAGE",), "width": ("INT", {"min": 256, "max": 832}), "height": ("INT", {"min": 256, "max": 832})}}
+        return {"required": {"image": ("IMAGE",), "width": ("INT", {"min": 256, "max": 2048}), "height": ("INT", {"min": 256, "max": 2048})}}
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "fit"
     CATEGORY = "Forja"
@@ -66,7 +66,7 @@ class ForjaFitReference:
     def fit(self, image, width, height):
         import torch
         import torch.nn.functional as functional
-        if width < 256 or height < 256 or width > 832 or height > 832:
+        if width < 256 or height < 256 or width > 2048 or height > 2048:
             raise ValueError("Unsupported reference dimensions")
         # Letterbox the entire initial frame instead of the Wan node's center crop.
         pixels = image[:1, :, :, :3].movedim(-1, 1).cpu()
@@ -79,4 +79,23 @@ class ForjaFitReference:
         pixels = functional.pad(pixels, (left, width - resized_width - left, top, height - resized_height - top), mode="replicate")
         return (pixels.movedim(1, -1),)
 
-NODE_CLASS_MAPPINGS = {"ForjaSaveGif": ForjaSaveGif, "ForjaFitReference": ForjaFitReference}
+class ForjaPreparedPrompt:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"text": ("STRING", {"forceInput": True})}}
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "prepare"
+    OUTPUT_NODE = True
+    CATEGORY = "Forja"
+
+    def prepare(self, text):
+        import comfy.model_management
+        text = text.strip()
+        if not text or len(text) > 12000:
+            raise ValueError("Visual stage returned an empty or oversized prepared prompt")
+        # Finish the VLM stage before loading diffusion components into GPU memory.
+        comfy.model_management.unload_all_models()
+        comfy.model_management.soft_empty_cache()
+        return {"ui": {"text": [text]}, "result": (text,)}
+
+NODE_CLASS_MAPPINGS = {"ForjaSaveGif": ForjaSaveGif, "ForjaFitReference": ForjaFitReference, "ForjaPreparedPrompt": ForjaPreparedPrompt}

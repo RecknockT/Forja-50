@@ -1,6 +1,15 @@
 # Estado verificable de Forja 50
 
-21 de octubre de 2026 · desarrollo 0.3.6.
+21 de octubre de 2026 · desarrollo 0.4.0.
+
+## HiDream-O1 Dev · 0.4.0 en desarrollo
+
+- Sustituye la preparación no publicada de FLUX 3: descarga pública de HiDream sin token/cuenta, checkpoint nativo FP8 escalado para 5080/5070 Ti y BF16 para 3090. Licencia MIT, revisión y hash fijados.
+- Flujo nativo de 28 pasos LCM/normal y CFG 1. Referencia real a HiDream, descripción original/preparada y tiempos conservados en el historial. Asistente Gemma 4 E4B INT8 opcional; liberación entre etapas. Calidad 1024/1536/2048, con formatos independientes de Wan.
+- Revisión previa de la descripción: con el asistente activo y la revisión habilitada (valor inicial), Forja ejecuta solo la etapa de texto y muestra el resultado editable antes de cargar la difusión. Se puede regenerar, volver al pedido original o cancelar sin usar la GPU; el texto final es el que recibe HiDream y queda en el historial, sin repetir el asistente. Con la revisión desactivada se conserva el flujo de una sola pasada. Pruebas de grafo sin asistente duplicado, contrato HTTP de preparación y revisión real de la ventana; la captura de pantalla y la validación física siguen pendientes.
+- Modelos anteriores conservados y registrados para limpieza explícita. Instalador sin pesos; importación verificada, pausa y reanudación existentes. Licencia HiDream separada de aceptaciones anteriores.
+- Compilación y núcleo aprobados; cinco contratos de grafos aprobados contra ComfyUI real en CPU, sin pesos. Pendientes pruebas físicas, interfaz y paquete de esta versión. No equivale a validación en las tres placas.
+- [Investigación y plan](HIDREAM-MIGRACION.md). Dev-2604 sigue como candidato de comparación; no es el checkpoint Dev original de Comfy ni se anuncia como probado.
 
 ## Interfaz compartida y VRAM 0.3.6
 

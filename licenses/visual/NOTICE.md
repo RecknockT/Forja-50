@@ -2,10 +2,9 @@
 
 El modo visual no utiliza OpenCode ni el Qwen 27B de programación. Descarga componentes independientes solo al pulsar Preparar. Conservar los avisos y licencias incluidos en cada distribución; este archivo no reemplaza sus textos completos.
 
-- FLUX.2 Klein **4B** (no 9B): Black Forest Labs, Apache 2.0. https://huggingface.co/black-forest-labs/FLUX.2-klein-4B
-- Codificador Qwen3 4B: Qwen / Alibaba, Apache 2.0. Es un componente del flujo visual, no el asistente de programación. https://huggingface.co/Qwen/Qwen3-4B
-- VAE FLUX.2: Black Forest Labs, Apache 2.0. https://github.com/black-forest-labs/flux2
-- Pesos empaquetados para ComfyUI: https://huggingface.co/Comfy-Org/flux2-klein-4B
+- HiDream-O1-Image-Dev: HiDream.ai, MIT. Texto completo en HiDream-MIT.txt. Fuente: https://github.com/HiDream-ai/HiDream-O1-Image . Checkpoints nativos BF16 y FP8 escalado empaquetados por Comfy: https://huggingface.co/Comfy-Org/HiDream-O1-Image . La conversión FP8 modifica precisión; no es un modelo distinto ni una afirmación de calidad idéntica.
+- Asistente opcional Gemma 4 E4B INT8: Google, Apache 2.0 según la ficha del proveedor. https://huggingface.co/google/gemma-4-E4B-it ; empaquetado: https://huggingface.co/Comfy-Org/gemma-4 . El generador HiDream no requiere este asistente para ejecutarse.
+- Modelos FLUX.2 Klein 4B, Qwen3 4B y VAE anteriores: Apache 2.0; se conservan en disco y solo se borran desde almacenamiento por acción expresa. https://huggingface.co/Comfy-Org/flux2-klein-4B
 - Wan 2.2 TI2V-5B y VAE: Wan AI, Apache 2.0. https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B
 - Codificador UMT5 XXL: Google, Apache 2.0; conversión FP8 para ComfyUI. https://huggingface.co/google/umt5-xxl y https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged
 - ComfyUI 0.42.1: GPL-3.0. El motor se descarga como paquete oficial separado, no se incorpora al ejecutable de Forja. Código fuente correspondiente: https://github.com/Comfy-Org/ComfyUI/tree/v0.42.1 y https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.42.1

@@ -89,7 +89,9 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
-            0.3.0 incorpora dos modos independientes: Programacion e Imagenes y animacion. El visual tiene interfaz propia, ComfyUI NVIDIA 0.42.1, FLUX.2 Klein 4B para crear/editar y Wan 2.2 5B opcional para animar. No requiere Qwen de programacion, OpenCode, Git ni repositorio. Descargar imagenes ronda 18,2 GB; animaciones agrega unos 18,1 GB. Los pesos se descargan desde la app, nunca dentro de Setup/portable.
+            0.4.0: HiDream-O1 Dev nativo, 28 pasos, descarga sin cuenta/token, FP8 escalado en RTX 5080/5070 Ti y BF16 en RTX 3090. Asistente visual local opcional por etapas. Referencias con vista previa e historial conservado. Resolucion hasta 2048 experimental. Validacion de 5070 Ti/3090 pendiente.
+
+            Dos modos independientes: Programacion e Imagenes y animacion. ComfyUI NVIDIA 0.42.1, HiDream Dev para crear/editar y Wan 2.2 5B opcional para animar. No requiere Qwen de programacion, OpenCode, Git ni repositorio. HiDream FP8: 8,07 GB; BF16 para 3090: 16,37 GB; asistente opcional: 8,09 GB; motor comprimido: 2,02 GB; Wan agrega unos 18,1 GB. Pesos descargados desde la app, nunca dentro de Setup/portable.
 
             Interfaz visual guiada: Preparar, Crear o editar y Ver resultado. Acciones Crear imagen, Editar imagen y Animar; vista previa de referencia, detalles tecnicos plegados e historial oscuro. Pausa de descarga y cancelacion dentro del modo visual. Semilla, pasos de animacion y exportacion PNG/MP4/GIF. Un modo activo a la vez; cambio confirmado detiene el anterior. Resultados y referencias protegidos en almacenamiento. Motor visual local con credencial efimera y sin nodos de nube.
 

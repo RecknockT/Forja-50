@@ -10,6 +10,8 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
 {
     private OwnedProcess? worker;
     private ComfyClient? client;
+    private GpuInfo? activeGpu;
+    private bool promptAssistant;
     private readonly SemaphoreSlim gate = new(1, 1);
     public bool IsReady => worker is { HasExited: false } && client is not null;
     public bool HasProcess => worker is not null;
@@ -30,7 +32,8 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             if (IsReady) return;
             await StopWorkerAsync();
             var provisioner = new VisualProvisioner(paths, new VerifiedDownloader(http));
-            await provisioner.VerifyModelsAsync(false, ct); provisioner.WriteConfiguration();
+            if (!settings.HiDreamLicenseAccepted) throw new InvalidOperationException("Revisá y aceptá las licencias de HiDream en Modelos y descargas.");
+            await provisioner.VerifyModelsAsync(false, ct, gpu, settings.EnhancePrompt); activeGpu = gpu; promptAssistant = settings.EnhancePrompt; provisioner.WriteConfiguration();
             var port = RuntimeSupervisor.FreePort(); var token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
             worker = OwnedProcess.Start(paths.ComfyPython, Arguments(paths, gpu, port), paths.ComfyRoot, Path.Combine(paths.Logs, "visual-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")),
                 new Dictionary<string, string> { ["FORJA_VISUAL_TOKEN"] = token, ["PYTHONUTF8"] = "1", ["PYTHONNOUSERSITE"] = "1", ["HF_HUB_OFFLINE"] = "1", ["TRANSFORMERS_OFFLINE"] = "1" });
@@ -42,27 +45,46 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         catch { await StopWorkerAsync(); throw; }
         finally { gate.Release(); }
     }
-    public async Task<VisualJob> GenerateAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null)
+    public async Task<PreparedPrompt> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct)
+    {
+        await gate.WaitAsync(ct);
+        try
+        {
+            request.Validate();
+            if (request.Task == VisualTask.Animation) throw new InvalidDataException("La animación no usa el asistente de descripción.");
+            if (!request.EnhancePrompt) throw new InvalidOperationException("El asistente de descripción está desactivado.");
+            if (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || !promptAssistant) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
+            if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
+            var input = StageReference(reference);
+            var text = await client.PreparePromptAsync(request, input, progress, ct);
+            return new(text, input);
+        }
+        catch
+        {
+            // Terminating our worker also interrupts GPU execution if ComfyUI cannot cancel a kernel promptly.
+            await StopWorkerAsync(); throw;
+        }
+        finally { gate.Release(); }
+    }
+    public async Task<VisualJob> GenerateAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null, PreparedPrompt? prepared = null)
     {
         await gate.WaitAsync(ct);
         var store = new VisualJobStore(paths); VisualJob? job = null;
         try
         {
             request.Validate();
+            if (request.Task != VisualTask.Animation && (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || request.EnhancePrompt != promptAssistant)) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
+            if (request.Task == VisualTask.Animation) prepared = null;
+            else if (prepared is not null && !request.EnhancePrompt) prepared = null;
             if (request.Task == VisualTask.Animation)
-                await new VisualProvisioner(paths, new VerifiedDownloader(http)).VerifyModelsAsync(true, ct);
-            string? input = null;
-            if (reference is not null)
-            {
-                var extension = Path.GetExtension(reference).ToLowerInvariant();
-                if (extension is not (".png" or ".jpg" or ".jpeg") || !File.Exists(reference) || new FileInfo(reference).Length > 32_000_000) throw new InvalidDataException("Elegí una referencia PNG/JPG de hasta 32 MB.");
-                input = Guid.NewGuid().ToString("N") + extension;
-                File.Copy(reference, Path.Combine(paths.VisualInputs, input));
-            }
+                await new VisualProvisioner(paths, new VerifiedDownloader(http)).VerifyModelsAsync(true, ct, activeGpu, promptAssistant);
+            var input = prepared?.StagedReference ?? StageReference(reference);
             job = new() { Request = request, Reference = input, OnlineReference = onlineReference, Status = "Generando" }; store.Save(job);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(45));
-            job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token);
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token, true, prepared?.Text);
+            job.PreparedPrompt = client.LastPreparedPrompt; job.TotalSeconds = elapsed.Elapsed.TotalSeconds;
             job.Status = "Completado"; store.Save(job); return job;
         }
         catch (Exception ex)
@@ -72,6 +94,16 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             await StopWorkerAsync(); throw;
         }
         finally { gate.Release(); }
+    }
+    private string? StageReference(string? reference)
+    {
+        if (reference is null) return null;
+        var extension = Path.GetExtension(reference).ToLowerInvariant();
+        if (extension is not (".png" or ".jpg" or ".jpeg") || !File.Exists(reference) || new FileInfo(reference).Length > 32_000_000) throw new InvalidDataException("Elegí una referencia PNG/JPG de hasta 32 MB.");
+        Directory.CreateDirectory(paths.VisualInputs);
+        var input = Guid.NewGuid().ToString("N") + extension;
+        File.Copy(reference, Path.Combine(paths.VisualInputs, input));
+        return input;
     }
     public async Task StopAsync()
     {
@@ -84,6 +116,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
 
 public sealed class ComfyClient
 {
+    public string? LastPreparedPrompt { get; private set; }
     private readonly HttpClient http;
     private readonly Uri endpoint;
     private readonly string token;
@@ -98,9 +131,31 @@ public sealed class ComfyClient
         using var response = await http.SendAsync(request, ct); response.EnsureSuccessStatusCode();
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
     }
-    public async Task<string[]> GenerateAsync(VisualRequest request, string id, string? reference, string outputRoot, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true)
+    /// <summary>Run only the assistant stage so its caption can be reviewed before diffusion starts.</summary>
+    public async Task<string> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true)
     {
-        var graph = VisualWorkflows.Build(request, id, reference);
+        LastPreparedPrompt = null;
+        var graph = VisualWorkflows.BuildPrepare(request, reference);
+        var result = await RunAsync(graph, progress, ct, useSocket, "Preparando la descripción; el asistente puede tardar unos minutos");
+        var text = ReadPreparedPrompt(result);
+        if (text is null) throw new IOException("El asistente no devolvió una descripción utilizable. Revisá Diagnóstico.");
+        LastPreparedPrompt = text;
+        return text;
+    }
+    public async Task<string[]> GenerateAsync(VisualRequest request, string id, string? reference, string outputRoot, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, string? preparedPrompt = null)
+    {
+        LastPreparedPrompt = null;
+        var graph = VisualWorkflows.Build(request, id, reference, preparedPrompt);
+        var result = await RunAsync(graph, progress, ct, useSocket, "Generando; la primera carga puede tardar varios minutos");
+        if (request.Task != VisualTask.Animation)
+        {
+            LastPreparedPrompt = preparedPrompt ?? ReadPreparedPrompt(result);
+            if (LastPreparedPrompt is null) throw new IOException("HiDream terminó sin registrar la descripción utilizada. Revisá Diagnóstico.");
+        }
+        return ReadFiles(result, outputRoot, id);
+    }
+    private async Task<JsonElement> RunAsync(Dictionary<string, object> graph, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket, string submitted)
+    {
         // Check the installed node contract before accepting a potentially long generation.
         using var schema = await GetAsync("object_info", ct);
         foreach (var node in graph.Values)
@@ -128,23 +183,26 @@ public sealed class ComfyClient
             using var accepted = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var promptId = accepted.RootElement.GetProperty("prompt_id").GetString()!;
             if (!Guid.TryParse(promptId, out _)) throw new InvalidDataException("Identificador del motor inválido.");
-            progress?.Report(new("Generando; la primera carga puede tardar varios minutos"));
+            progress?.Report(new(submitted));
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
                 using var history = await GetAsync("history/" + promptId, ct);
-                if (history.RootElement.TryGetProperty(promptId, out var result))
+                if (history.RootElement.TryGetProperty(promptId, out var result) && result.TryGetProperty("status", out var status))
                 {
-                    if (result.TryGetProperty("status", out var status))
-                    {
-                        if (status.TryGetProperty("status_str", out var state) && state.GetString() == "error") throw new IOException(DescribeFailure(status));
-                        if (status.TryGetProperty("completed", out var completed) && completed.GetBoolean()) return ReadFiles(result, outputRoot, id);
-                    }
+                    if (status.TryGetProperty("status_str", out var state) && state.GetString() == "error") throw new IOException(DescribeFailure(status));
+                    if (status.TryGetProperty("completed", out var completed) && completed.GetBoolean()) return result.Clone();
                 }
                 await Task.Delay(1000, ct);
             }
         }
         finally { socketLifetime.Cancel(); socket.Abort(); try { await socketTask; } catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { } }
+    }
+    public static string? ReadPreparedPrompt(JsonElement result)
+    {
+        if (!result.TryGetProperty("outputs", out var outputs) || !outputs.TryGetProperty("32", out var prepared)
+            || !prepared.TryGetProperty("text", out var texts) || texts.ValueKind != JsonValueKind.Array || texts.GetArrayLength() == 0 || texts[0].ValueKind != JsonValueKind.String) return null;
+        var text = texts[0].GetString()?.Trim(); return text?.Length is > 0 and <= 12000 ? text : null;
     }
     public static string DescribeFailure(JsonElement status)
     {
@@ -195,6 +253,11 @@ public sealed class ComfyClient
                 try
                 {
                     using var data = JsonDocument.Parse(buffer.AsMemory(0, message.Count));
+                    if (data.RootElement.GetProperty("type").GetString() == "executing" && data.RootElement.GetProperty("data").TryGetProperty("node", out var node))
+                    {
+                        var stage = node.ValueKind == JsonValueKind.String ? node.GetString() switch { "31" => "Preparando la descripción y analizando la referencia", "32" => "Liberando memoria del asistente visual", "11" => "Generando la imagen o animación", "12" => "Convirtiendo el resultado en imagen", _ => null } : null;
+                        if (stage is not null) progress?.Report(new(stage));
+                    }
                     if (data.RootElement.GetProperty("type").GetString() == "progress")
                     {
                         var p = data.RootElement.GetProperty("data"); var value = p.GetProperty("value").GetDouble(); var max = p.GetProperty("max").GetDouble();

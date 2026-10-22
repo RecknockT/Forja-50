@@ -1,4 +1,4 @@
-"""Exercise the actual embedded bridge without ComfyUI, CUDA or model weights."""
+﻿"""Exercise the actual embedded bridge without ComfyUI, CUDA or model weights."""
 import asyncio
 import importlib.util
 import os
@@ -39,6 +39,19 @@ async def checks():
 asyncio.run(checks())
 print("PASS puente visual: autenticación real, rechazo de credenciales incorrectas y orígenes de navegador")
 
+unloaded = []
+management = types.SimpleNamespace(unload_all_models=lambda: unloaded.append("unload"), soft_empty_cache=lambda: unloaded.append("cache"))
+sys.modules["comfy"] = types.SimpleNamespace(model_management=management)
+sys.modules["comfy.model_management"] = management
+prepared = bridge.ForjaPreparedPrompt().prepare("  A character flying above a forest.  ")
+assert prepared["result"][0] == "A character flying above a forest." and unloaded == ["unload", "cache"]
+try:
+    bridge.ForjaPreparedPrompt().prepare(" ")
+    raise AssertionError("Se aceptó un pedido preparado vacío")
+except ValueError:
+    pass
+print("PASS preparación visual: descripción registrada, liberación del asistente y rechazo de salida vacía")
+
 if "--real-gif" in sys.argv:
     import numpy as np
     from PIL import Image
@@ -66,6 +79,7 @@ if "--real-fit" in sys.argv:
     assert fitted.shape == (1, 256, 256, 3)
     assert fitted[0, 0, 0, 0] == 1 and fitted[0, -1, -1, 2] == 1
     assert torch.allclose(fitted[:, 0], fitted[:, 64])
+    assert bridge.ForjaFitReference().fit(image, 1024, 1024)[0].shape == (1, 1024, 1024, 3)
     assert not torch.cuda.is_initialized()
     print("PASS referencia real: marco completo y orientación sin recorte; CPU sin CUDA")
 

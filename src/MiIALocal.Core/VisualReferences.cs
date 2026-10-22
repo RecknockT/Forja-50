@@ -50,7 +50,7 @@ public sealed class VisualReferenceSearch : IDisposable
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(25)); ct = deadline.Token;
         subject = subject.Trim();
         if (subject.Length is < 1 or > 100) throw new InvalidDataException("Escribí el personaje u objeto que querés buscar (hasta 100 caracteres).");
-        var url = "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=0&gsrlimit=8&prop=pageimages%7Cinfo&inprop=url&piprop=thumbnail&pithumbsize=768&pilicense=any&gsrsearch=" + Uri.EscapeDataString(subject);
+        var url = "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=0&gsrlimit=8&prop=pageimages%7Cinfo&inprop=url&piprop=thumbnail&pithumbsize=1024&pilicense=any&gsrsearch=" + Uri.EscapeDataString(subject);
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         var bytes = await ReadLimitedAsync(response, 1_000_000, ct);

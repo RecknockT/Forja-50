@@ -357,7 +357,7 @@ public partial class MainWindow : Window
             var context = settings.ContextTokens; var engine = settings.EngineMode;
             WorkspaceChoice.SelectedIndex = 1; RefreshControls();
             if (settings.Mode != AppMode.Visual || VisualContainer.Visibility != Visibility.Visible || WelcomePane.Visibility == Visibility.Visible || ProjectArea.Visibility != Visibility.Collapsed
-                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.Visibility != Visibility.Visible || StartButton.IsEnabled || !ConfigurationSummary.Text.Contains("FLUX.2")) throw new Exception("No se aisló el espacio visual con inicio visible y sin activar modelos faltantes.");
+                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.Visibility != Visibility.Visible || StartButton.IsEnabled || !ConfigurationSummary.Text.Contains("HiDream")) throw new Exception("No se aisló el espacio visual con inicio visible y sin activar modelos faltantes.");
             busy = true; RefreshControls();
             if (CancelButton.Visibility != Visibility.Visible || WelcomePane.IsAncestorOf(CancelButton) || !Equals(CancelButton.Content, "Cancelar")) throw new Exception("La cancelación no es accesible desde el encabezado visual.");
             busy = false; RefreshControls();

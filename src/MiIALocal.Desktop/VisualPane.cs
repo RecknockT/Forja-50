@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,11 +28,16 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox steps = new() { ItemsSource = new[] { "10 pasos · más rápido", "20 pasos · inicial", "30 pasos · más lento" }, SelectedIndex = 1 };
     private readonly CheckBox animation = new() { Content = "Descargar también Wan para animaciones y GIF" };
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
+    private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un asistente visual local (8,09 GB adicionales)" };
+    private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
+    private readonly Button importModels = new() { Content = "Usar modelos HiDream ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Rápida · 1024 píxeles", "Detalle · 1536 píxeles", "Alta · 2048 píxeles (experimental)" }, SelectedIndex = 0 };
     private readonly CheckBox webReferences = new() { Content = "Buscar personajes reconocibles en Wikipedia" };
     private readonly TextBlock animationHint = new() { Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10), Visibility = Visibility.Collapsed };
     private readonly TextBox webSubject = new() { MaxLength = 100, ToolTip = "Opcional: escribí solo el personaje u objeto, por ejemplo Frieren. Vacío: se intenta detectar en tu descripción." };
     private readonly TextBlock webStatus = new() { Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 8) };
     private readonly Button webSource = new() { Content = "Ver origen de la referencia", HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed, FontSize = 12 };
+    private readonly CheckBox useIdentity = new() { Content = "Usar esta imagen como referencia del personaje" };
     private VisualReference? onlineReference;
     private readonly Button prepare = new() { Content = "Preparar imágenes" };
     private readonly Button generate = new() { Content = "Generar", Background = new SolidColorBrush(Color.FromRgb(8, 127, 112)), Foreground = Brushes.White };
@@ -47,6 +52,8 @@ public sealed class VisualPane : UserControl
     private readonly Expander onlineOptions = new() { Header = "Opciones de la referencia", Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) };
     private readonly TextBlock setupStatus = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray };
     private readonly TextBlock resultTitle = new() { Text = "Tu próxima creación", FontSize = 20, FontWeight = FontWeights.SemiBold };
+    private readonly TextBox preparedDescription = new() { IsReadOnly = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 160, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly Expander preparedDetails = new() { Header = "Ver el texto final que recibió HiDream", Foreground = Brushes.LightGray, Visibility = Visibility.Collapsed, Margin = new(0, 12, 0, 0) };
     private readonly TextBlock emptyPreview = new() { Text = "La imagen aparecerá acá\n\nCreá algo nuevo o elegí una imagen para cambiar un detalle.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 300 };
     private readonly TextBlock emptyGallery = new() { Text = "Todavía no hay creaciones. Tus resultados se guardarán aquí.", Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 0) };
     private readonly Grid workspace = new();
@@ -64,8 +71,9 @@ public sealed class VisualPane : UserControl
     public bool IsReady => runtime.IsReady;
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
-    public bool IsPrepared => provisioner.IsPrepared(false);
-    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nFLUX.2 Klein 4B · BF16 · 4 pasos\nCodificador interno Qwen 4B\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nTransferencia de componentes a RAM\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nPruebas de inferencia: pendientes";
+    public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt);
+    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nHiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos\nCFG 1 · LCM · normal\nAsistente Gemma 4 E4B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
+
 
     public VisualPane(AppPaths paths, Func<AppSettings> settings, HttpClient http, Func<GpuInfo?> gpu,
         Func<Func<CancellationToken, Task>, Task> run, Action<string> status, Action changed, Action<PreparationProgress> progress)
@@ -80,10 +88,12 @@ public sealed class VisualPane : UserControl
         var details = new StackPanel(); details.Children.Add(package);
         preparation.Children.Add(new TextBlock { Text = "La preparación se hace una sola vez. Después podés crear sin conexión.", Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 10) });
         preparation.Children.Add(animation); animation.Margin = new(0, 0, 0, 10);
-        preparation.Children.Add(new TextBlock { Text = "Solo imágenes: unos 18,2 GB. Con animaciones: unos 36,3 GB. Lo descargado se reutiliza.", Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 12) });
+        preparation.Children.Add(new TextBlock { Text = "Descarga directa sin cuenta ni token. HiDream incluye su procesamiento de texto e imagen; el asistente es opcional. Los modelos anteriores se conservan.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 12) });
+        preparation.Children.Add(enhancePrompt); enhancePrompt.Margin = new(0, 0, 0, 10);
+        preparation.Children.Add(importModels);
         var licenses = new Button { Content = "Leer licencias", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10) };
         licenses.Click += (_, _) => ShowLicenses(); preparation.Children.Add(licenses);
-        preparation.Children.Add(license); license.Margin = new(0, 0, 0, 12); license.Content = "Acepto las licencias de los componentes visuales";
+        preparation.Children.Add(license); license.Margin = new(0, 0, 0, 12); license.Content = "Revisé y acepto las licencias de HiDream y los componentes visuales";
         preparation.Children.Add(new Expander { Header = "Ver componentes y ubicaciones", Foreground = Brushes.LightGray, Content = details, Margin = new(0, 10, 0, 0) });
         downloads.Header = "Modelos y descargas"; downloads.Content = preparation; downloads.IsExpanded = !IsPrepared;
         var setup = new StackPanel(); setup.Children.Add(downloads);
@@ -103,19 +113,21 @@ public sealed class VisualPane : UserControl
         editor.Children.Add(taskHelp);
         attach.Content = "Elegir una imagen"; clear.Content = "Quitar referencia"; foreach (var button in new[] { attach, clear }) { button.FontSize = 12; button.Padding = new(10, 7, 10, 7); } referenceActions.Children.Add(attach); referenceActions.Children.Add(clear); editor.Children.Add(referenceActions);
         referenceLabel.Margin = new(0, 6, 0, 10); referenceLabel.FontSize = 12; editor.Children.Add(referenceLabel);
+        useIdentity.Margin = new(0, 0, 0, 10); editor.Children.Add(useIdentity);
         editor.Children.Add(new TextBlock { Text = "Tu descripción", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 8) }); prompt.MinHeight = 100; editor.Children.Add(prompt);
+        reviewPreparedPrompt.Margin = new(0, 8, 0, 0); editor.Children.Add(reviewPreparedPrompt);
         generate.HorizontalAlignment = HorizontalAlignment.Left; generate.MinWidth = 180; generate.Margin = new(0, 12, 0, 0); editor.Children.Add(generate); editor.Children.Add(creationHint);
         example.Click += (_, _) => prompt.Text = task.SelectedIndex switch { 1 => "Cambiá solo el brazo izquierdo a rojo. Conservá los demás detalles.", 2 => "El personaje saluda suavemente con la mano. Cámara fija.", _ => "Un pequeño robot blanco en un taller acogedor, iluminación cálida y estilo de ilustración 3D." }; editor.Children.Add(example);
         editor.Children.Add(new TextBlock { Text = "Formato", FontWeight = FontWeights.SemiBold, Margin = new(0, 6, 0, 8) });
-        var options = new WrapPanel(); options.Children.Add(size); options.Children.Add(duration); editor.Children.Add(options);
+        var options = new WrapPanel(); options.Children.Add(size); options.Children.Add(duration); editor.Children.Add(options); editor.Children.Add(imageQuality); imageQuality.Margin = new(0, 8, 0, 0);
         editor.Children.Add(animationHint);
         var advanced = new StackPanel(); advanced.Children.Add(new TextBlock { Text = "Semilla: dejala vacía para variar cada resultado." }); advanced.Children.Add(seed);
-        advanced.Children.Add(new TextBlock { Text = "Pasos de animación (no cambia los cuatro pasos de imágenes)." }); advanced.Children.Add(steps);
+        advanced.Children.Add(new TextBlock { Text = "Pasos de animación (HiDream utiliza 28 pasos)." }); advanced.Children.Add(steps);
         editor.Children.Add(new Expander { Header = "Más opciones", Foreground = Brushes.LightGray, Content = advanced, Margin = new(0, 12, 0, 14) });
         editor.Children.Add(webReferences);
         var webOptions = new StackPanel();
         webOptions.Children.Add(new TextBlock { Text = "Personaje u objeto (opcional; vacío = detectar en tu descripción)", FontSize = 12, Margin = new(0, 10, 0, 6) }); webOptions.Children.Add(webSubject);
-        webOptions.Children.Add(new TextBlock { Text = "Los estilos generales, como anime de los 90, se describen directamente al modelo. La búsqueda automática solo usa coincidencias claras; no te obliga a elegir una serie. Escribí un nombre aquí para buscarlo expresamente. Se envía ese término a Wikipedia. Editar y animar usan la imagen elegida.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
+        webOptions.Children.Add(new TextBlock { Text = "Antes de generar podés revisar la imagen encontrada y reemplazarla por una de tu PC. Se envía solo el nombre a Wikipedia. La búsqueda no analiza caras ni garantiza la identidad. Los estilos generales, como anime de los 90, se describen directamente al modelo. Editar y animar usan la imagen elegida.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
         onlineOptions.Content = webOptions; editor.Children.Add(onlineOptions);
         editor.Children.Add(webStatus); editor.Children.Add(webSource);
         webReferences.Click += (_, _) => { settings().Visual.WebReferencesEnabled = webReferences.IsChecked == true; Save(); Refresh(); };
@@ -126,29 +138,44 @@ public sealed class VisualPane : UserControl
         open.Content = "Abrir"; export.Content = "Guardar…";
         foreach (var button in new[] { open, export }) { button.FontSize = 12; button.Padding = new(12, 9, 12, 9); }
         var folder = new Button { Content = "Ver carpeta", FontSize = 12, Padding = new(12, 9, 12, 9) }; folder.Click += (_, _) => { Directory.CreateDirectory(paths.VisualOutputs); OpenPath(paths.VisualOutputs); }; actions.Children.Add(folder); results.Children.Add(actions);
+        preparedDetails.Content = preparedDescription; results.Children.Add(preparedDetails);
         var history = new StackPanel(); history.Children.Add(new TextBlock { Text = "Tus creaciones", FontSize = 18, FontWeight = FontWeights.SemiBold });
         history.Children.Add(new TextBlock { Text = "Seleccioná una imagen anterior para seguir editándola.", Foreground = Brushes.LightGray, Margin = new(0, 6, 0, 10) }); history.Children.Add(emptyGallery); history.Children.Add(gallery); panel.Children.Add(Card(history));
         gallery.Background = new SolidColorBrush(Color.FromRgb(16, 24, 32)); gallery.Foreground = Brushes.White; gallery.BorderBrush = Brushes.DarkSlateGray;
         gallery.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='ListBox'><Border Background='{TemplateBinding Background}' Padding='8' CornerRadius='8'><ScrollViewer Background='{TemplateBinding Background}' Focusable='False'><ItemsPresenter/></ScrollViewer></Border></ControlTemplate>");
         SizeChanged += (_, _) => { var narrow = ActualWidth < 800; workspace.ColumnDefinitions[1].Width = narrow ? new(0) : new(1.35, GridUnitType.Star); Grid.SetRow(resultCard, narrow ? 1 : 0); Grid.SetColumn(resultCard, narrow ? 0 : 1); editCard.Margin = new(0, 0, narrow ? 0 : 16, narrow ? 16 : 0); };
         panel.Children.Add(new TextBlock { Text = "Animaciones experimentales: GIF y MP4. La primera carga puede tardar; la velocidad depende de tu placa y memoria libre. No se garantiza un bucle continuo.", Margin = new(0, 14, 0, 0), Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap, FontSize = 11 });
+        enhancePrompt.Click += (_, _) =>
+        {
+            settings().Visual.EnhancePrompt = enhancePrompt.IsChecked == true; Save(); UpdatePackage(); Refresh();
+            if (enhancePrompt.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true)) status("El asistente necesita 8,09 GB. Pulsá Descargar y preparar antes de iniciar la IA; lo descargado se reutiliza.");
+            else if (enhancePrompt.IsChecked != true) status("Asistente desactivado. Los archivos descargados se conservan y podés volver a activarlo cuando quieras.");
+        };
+        reviewPreparedPrompt.Click += (_, _) => { settings().Visual.ReviewPreparedPrompt = reviewPreparedPrompt.IsChecked == true; Save(); };
         animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); };
-        license.Click += (_, _) => { settings().Visual.LicenseAccepted = license.IsChecked == true; Save(); };
-        task.SelectionChanged += (_, _) => { Refresh(); if (task.SelectedIndex == 2 && !provisioner.IsPrepared(true)) status("Para animar, detené la IA, abrí Modelos y descargas y marcá la descarga de Wan. Después pulsá Descargar y preparar."); };
+        license.Click += (_, _) => { settings().Visual.LicenseAccepted = settings().Visual.HiDreamLicenseAccepted = license.IsChecked == true; Save(); };
+        importModels.Click += async (_, _) =>
+        {
+            if (!available || IsActive) return;
+            var picker = new OpenFileDialog { Multiselect = true, Filter = "Modelos HiDream|*.safetensors", Title = "Elegir un checkpoint HiDream o el asistente del perfil" };
+            if (picker.ShowDialog(Window.GetWindow(this)) != true) return;
+            await run(async ct => { await provisioner.ImportModelsAsync(picker.FileNames, new Progress<PreparationProgress>(progress), ct); status("Archivos importados y verificados. Pulsá Descargar y preparar para completar el motor y los componentes faltantes."); }); Refresh();
+        };
+        task.SelectionChanged += (_, _) => { Refresh(); if (task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt)) status("Para animar, detené la IA, abrí Modelos y descargas y marcá la descarga de Wan. Después pulsá Descargar y preparar."); };
         prepare.Click += async (_, _) =>
         {
             if (!available || !compatible) return;
             if (license.IsChecked != true) { status("Revisá y aceptá las licencias visuales antes de descargar."); return; }
             preparing = true;
-            try { await run(async ct => { await provisioner.PrepareAsync(settings().Visual, new Progress<PreparationProgress>(progress), ct); status("Modelos listos. Pulsá Iniciar IA arriba a la derecha."); }); }
+            try { await run(async ct => { await provisioner.PrepareAsync(settings().Visual, new Progress<PreparationProgress>(progress), ct, gpu()); status("Modelos listos. Pulsá Iniciar IA arriba a la derecha."); }); }
             finally { preparing = false; Refresh(); }
         };
         attach.Click += (_, _) =>
         {
             var picker = new OpenFileDialog { Filter = "Imágenes|*.png;*.jpg;*.jpeg", Title = "Elegir imagen de referencia" };
-            if (picker.ShowDialog(Window.GetWindow(this)) == true) { SetReference(picker.FileName); if (task.SelectedIndex != 2) task.SelectedIndex = 1; }
+            if (picker.ShowDialog(Window.GetWindow(this)) == true) { SetReference(picker.FileName); if (task.SelectedIndex == 0 && reference == picker.FileName) useIdentity.IsChecked = true; Refresh(); }
         };
-        clear.Click += (_, _) => { reference = null; referenceLabel.Text = "Sin referencia: se creará una imagen nueva."; task.SelectedIndex = 0; Refresh(); };
+        clear.Click += (_, _) => { reference = null; useIdentity.IsChecked = false; ShowOnlineSource(null); referenceLabel.Text = "Sin referencia: se creará una imagen nueva."; task.SelectedIndex = 0; Refresh(); };
         generate.Click += async (_, _) => await GenerateAsync();
         open.Click += (_, _) => { if (resultFile is not null && File.Exists(resultFile)) OpenPath(resultFile); };
         export.Click += (_, _) => Export();
@@ -160,6 +187,7 @@ public sealed class VisualPane : UserControl
             ShowResult(file);
             if (Path.GetExtension(file).Equals(".png", StringComparison.OrdinalIgnoreCase)) { SetReference(file); task.SelectedIndex = 1; }
             ShowOnlineSource(item.Job.OnlineReference);
+            ShowPreparedDescription(item.Job);
         };
         ReloadSettings(); LoadGallery();
     }
@@ -167,7 +195,9 @@ public sealed class VisualPane : UserControl
     public void ReloadSettings()
     {
         var visual = settings().Visual;
-        animation.IsChecked = visual.IncludeAnimation; license.IsChecked = visual.LicenseAccepted;
+        enhancePrompt.IsChecked = visual.EnhancePrompt; reviewPreparedPrompt.IsChecked = visual.ReviewPreparedPrompt;
+        imageQuality.SelectedIndex = visual.Width > 1536 || visual.Height > 1536 ? 2 : visual.Width > 1024 || visual.Height > 1024 ? 1 : 0;
+        animation.IsChecked = visual.IncludeAnimation; license.IsChecked = visual.HiDreamLicenseAccepted;
         webReferences.IsChecked = visual.WebReferencesEnabled;
         size.SelectedIndex = visual.Width > visual.Height ? 1 : visual.Height > visual.Width ? 2 : 0;
         duration.SelectedIndex = visual.AnimationFrames == 121 ? 1 : 0;
@@ -177,22 +207,26 @@ public sealed class VisualPane : UserControl
     public void SetAvailable(bool available, bool compatible)
     { this.available = available; this.compatible = compatible; Refresh(); }
     private void Save() { paths.SaveSettings(settings()); changed(); }
-    private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
+    private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
     private void Refresh()
     {
         var prepared = IsPrepared;
         prepare.IsEnabled = available && compatible && !IsActive;
-        prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true) ? "Agregar animaciones" : "Comprobar / reparar";
+        prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt) ? "Agregar animaciones" : "Comprobar / reparar";
         setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después." : loading ? "Iniciando la IA…" : IsReady ? "IA iniciada. Elegí qué querés crear." : prepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : "Primero descargá los modelos. Después podrás iniciar la IA desde arriba a la derecha.";
         setupStatus.Visibility = prepared && !preparing && !loading ? Visibility.Collapsed : Visibility.Visible;
         if (prepared && !wasPrepared && !preparing) downloads.IsExpanded = false;
         wasPrepared = prepared;
         generate.IsEnabled = available && compatible && IsReady && (task.SelectedIndex != 1 || reference is not null)
-            && (task.SelectedIndex != 2 || provisioner.IsPrepared(true));
+            && (task.SelectedIndex != 2 || provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt));
         prompt.IsEnabled = example.IsEnabled = available; task.IsEnabled = available;
         for (var index = 0; index < taskTabs.Length; index++) { taskTabs[index].IsEnabled = available; taskTabs[index].Background = new SolidColorBrush(index == task.SelectedIndex ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67)); }
         animation.IsEnabled = license.IsEnabled = available && !IsActive;
-        attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = available;
+        enhancePrompt.IsEnabled = importModels.IsEnabled = available && !IsActive;
+        reviewPreparedPrompt.IsEnabled = available && settings().Visual.EnhancePrompt;
+        reviewPreparedPrompt.Visibility = settings().Visual.EnhancePrompt && task.SelectedIndex != 2 ? Visibility.Visible : Visibility.Collapsed;
+        attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = useIdentity.IsEnabled = available;
+        imageQuality.IsEnabled = available && task.SelectedIndex != 2; imageQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
         seed.IsEnabled = available; steps.IsEnabled = available && task.SelectedIndex == 2;
         webReferences.IsEnabled = available && task.SelectedIndex == 0;
@@ -210,11 +244,12 @@ public sealed class VisualPane : UserControl
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
         taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
-        referenceActions.Visibility = task.SelectedIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
+        referenceActions.Visibility = Visibility.Visible;
+        useIdentity.Visibility = task.SelectedIndex == 0 && reference is not null ? Visibility.Visible : Visibility.Collapsed;
         clear.Visibility = reference is null ? Visibility.Collapsed : Visibility.Visible;
-        referenceLabel.Visibility = task.SelectedIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
-        referenceLabel.Text = reference is null ? "Elegí una imagen para usarla como punto de partida." : task.SelectedIndex == 0 ? "Tu imagen anterior sigue disponible en Editar imagen y Animar." : IsOwnedExistingResult(reference) ? "Imagen seleccionada de tus creaciones. Escribí qué querés cambiar." : "Imagen seleccionada: " + Path.GetFileName(reference);
-        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true) ? "Agregá el modelo de animación en Modelos y descargas." : "";
+        referenceLabel.Visibility = reference is not null || task.SelectedIndex != 0 ? Visibility.Visible : Visibility.Collapsed;
+        referenceLabel.Text = reference is null ? "Elegí una imagen para usarla como punto de partida." : task.SelectedIndex == 0 ? "Imagen disponible. Marcá la opción de referencia para usar su personaje en una escena nueva." : IsOwnedExistingResult(reference) ? "Imagen seleccionada de tus creaciones. Escribí qué querés cambiar." : "Imagen seleccionada: " + Path.GetFileName(reference);
+        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt) ? "Agregá el modelo de animación en Modelos y descargas." : "";
         creationHint.Visibility = string.IsNullOrEmpty(creationHint.Text) ? Visibility.Collapsed : Visibility.Visible;
     }
     public async Task StartAsync(CancellationToken ct)
@@ -233,7 +268,8 @@ public sealed class VisualPane : UserControl
         try { await run(async ct =>
         {
             var visual = settings().Visual;
-            var (width, height) = size.SelectedIndex switch { 1 => (1024, 768), 2 => (768, 1024), _ => (1024, 1024) };
+            var side = imageQuality.SelectedIndex switch { 1 => 1536, 2 => 2048, _ => 1024 };
+            var (width, height) = size.SelectedIndex switch { 1 => (side, side * 3 / 4), 2 => (side * 3 / 4, side), _ => (side, side) };
             var kind = (VisualTask)task.SelectedIndex;
             var frames = duration.SelectedIndex == 1 ? 121 : 73;
             if (kind == VisualTask.Animation) (width, height) = VisualAnimation.Dimensions(size.SelectedIndex);
@@ -241,11 +277,11 @@ public sealed class VisualPane : UserControl
             visual.AnimationFrames = frames; visual.AnimationSteps = steps.SelectedIndex switch { 0 => 10, 2 => 30, _ => 20 }; Save();
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
             if (!string.IsNullOrWhiteSpace(seed.Text) && !long.TryParse(seed.Text, out chosenSeed)) throw new InvalidDataException("La semilla debe ser un número entero positivo o estar vacía.");
-            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps);
+            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, gpu()?.IsRtx3090 == true, visual.EnhancePrompt);
             request.Validate();
-            var chosenReference = kind == VisualTask.Image ? null : reference;
-            VisualReference? discovered = kind == VisualTask.Image ? null : onlineReference;
-            if (kind == VisualTask.Image && visual.WebReferencesEnabled)
+            var chosenReference = kind == VisualTask.Image && useIdentity.IsChecked != true ? null : reference;
+            VisualReference? discovered = chosenReference is null ? null : onlineReference;
+            if (kind == VisualTask.Image && chosenReference is null && visual.WebReferencesEnabled)
             {
                 var explicitSearch = !string.IsNullOrWhiteSpace(webSubject.Text);
                 var subject = explicitSearch ? webSubject.Text.Trim() : VisualReferenceSearch.AutomaticSubject(request.Prompt);
@@ -257,16 +293,18 @@ public sealed class VisualPane : UserControl
                 {
                     using var search = new VisualReferenceSearch();
                     var choices = await search.SearchAsync(subject, ct);
-                    discovered = VisualReferenceSearch.AutomaticMatch(choices, subject) ?? (explicitSearch ? ChooseOnlineReference(choices) : null);
-                    if (discovered is null && explicitSearch) return;
-                    if (discovered is null) webStatus.Text = "Sin una coincidencia clara: se generará tu idea sin imponer una referencia.";
+                    var matched = VisualReferenceSearch.AutomaticMatch(choices, subject);
+                    if (matched is null && !explicitSearch) webStatus.Text = "Sin una coincidencia clara: se generará tu idea sin imponer una referencia. Podés elegir una imagen de tu PC.";
                     else
                     {
-                    chosenReference = await search.DownloadAsync(discovered, paths.VisualInputs, ct);
-                    using (var input = File.OpenRead(chosenReference))
-                    { var decoder = BitmapDecoder.Create(input, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None); if (decoder.Frames[0].PixelWidth > 8192 || decoder.Frames[0].PixelHeight > 8192) throw new InvalidDataException("La referencia supera el tamaño admitido."); }
-                    LoadPreview(chosenReference); resultTitle.Text = "Referencia de internet";
+                    var ordered = matched is null ? choices : choices.OrderByDescending(item => item == matched).ToArray();
+                    var selection = VisualReferencePicker.Show(Window.GetWindow(this), ordered, search, paths.VisualInputs, ct);
+                    ct.ThrowIfCancellationRequested();
+                    if (selection is null) { status("Generación cancelada antes de usar la GPU."); return; }
+                    chosenReference = selection.File; discovered = selection.Source;
+                    if (chosenReference is not null) { LoadPreview(chosenReference); resultTitle.Text = "Referencia elegida"; }
                     ShowOnlineSource(discovered);
+                    if (discovered is null) webStatus.Text = chosenReference is null ? "Elegiste crear sin referencia." : "Se utiliza la referencia de tu PC, sin subirla a internet.";
                     }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -278,33 +316,31 @@ public sealed class VisualPane : UserControl
                 }
                 }
             }
-            else if (kind == VisualTask.Image) { onlineReference = null; webStatus.Text = "Creación sin búsqueda en internet."; webSource.Visibility = Visibility.Collapsed; }
+            else if (kind == VisualTask.Image) { if (chosenReference is null) ShowOnlineSource(null); webStatus.Text = chosenReference is null ? "Creación sin búsqueda en internet." : "Se usa la imagen seleccionada como referencia del personaje."; }
             var lookupNote = webStatus.Text;
+            PreparedPrompt? prepared = null;
+            if (kind != VisualTask.Animation && visual.EnhancePrompt && visual.ReviewPreparedPrompt)
+            {
+                status("Preparando la descripción con el asistente visual…");
+                var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct);
+                var reviewed = PreparedPromptWindow.Show(Window.GetWindow(this), current.Text, request.Prompt, chosenReference is not null,
+                    async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token)).Text, ct);
+                if (reviewed is null) { status("Generación cancelada antes de usar la GPU. Tu pedido sigue en el cuadro de texto."); return; }
+                prepared = current with { Text = reviewed };
+            }
             status(kind == VisualTask.Animation ? "Preparando la animación; la primera carga puede tardar…" : "Preparando tu imagen…");
-            var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
+            var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered, prepared);
             LoadGallery();
             var file = job.Files.FirstOrDefault(f => Path.GetExtension(f) == ".png") ?? job.Files.First();
             ShowResult(file);
+            ShowPreparedDescription(job);
             if (kind != VisualTask.Animation) { SetReference(file); task.SelectedIndex = 1; }
             ShowOnlineSource(job.OnlineReference);
             if (kind == VisualTask.Image && job.OnlineReference is null && visual.WebReferencesEnabled) webStatus.Text = lookupNote;
             var referenceSummary = kind == VisualTask.Image && visual.WebReferencesEnabled ? job.OnlineReference is { } source ? " Referencia utilizada: " + source.Title + "." : " " + lookupNote : "";
-            status((kind == VisualTask.Animation ? "Animación creada. Podés abrir el MP4 o guardar la versión GIF." : "Imagen creada. Pedí otro cambio o elegí Crear imagen para empezar otra.") + referenceSummary);
+            status((kind == VisualTask.Animation ? "Animación creada. Podés abrir el MP4 o guardar la versión GIF." : "Imagen creada. Pedí otro cambio o elegí Crear imagen para empezar otra.") + (job.TotalSeconds is { } seconds ? $" Tiempo del motor: {seconds:0.0} s." : "") + referenceSummary);
         }); }
         finally { generating = false; LoadGallery(); Refresh(); }
-    }
-    private VisualReference? ChooseOnlineReference(VisualReference[] choices)
-    {
-        if (choices.Length == 0) { webStatus.Text = "No encontramos una imagen de referencia. Probá escribir solo el nombre en Referencias en línea, o desactivá la búsqueda."; status(webStatus.Text); return null; }
-        var picker = new ComboBox { ItemsSource = choices, SelectedIndex = 0, Margin = new(0, 12, 0, 16) };
-        var body = new StackPanel { Margin = new(24) };
-        body.Children.Add(new TextBlock { Text = "¿A cuál te referís?", FontSize = 22, FontWeight = FontWeights.SemiBold });
-        body.Children.Add(new TextBlock { Text = "Encontramos varias referencias en Wikipedia. Elegí el personaje u objeto correcto.", Margin = new(0, 10, 0, 0) }); body.Children.Add(picker);
-        var buttons = new WrapPanel(); var use = new Button { Content = "Usar referencia", IsDefault = true }; var cancel = new Button { Content = "Volver", IsCancel = true }; buttons.Children.Add(use); buttons.Children.Add(cancel); body.Children.Add(buttons);
-        var dialog = new Window { Title = "Elegir referencia", Owner = Window.GetWindow(this), Content = body, Width = 520, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = new SolidColorBrush(Color.FromRgb(24, 35, 44)), Foreground = Brushes.White };
-        NativeWindowTheme.Attach(dialog); use.Click += (_, _) => dialog.DialogResult = true;
-        if (dialog.ShowDialog() == true) return picker.SelectedItem as VisualReference;
-        status("Generación cancelada antes de usar la GPU."); return null;
     }
     private void SetReference(string file)
     {
@@ -316,7 +352,7 @@ public sealed class VisualPane : UserControl
             var frame = decoder.Frames[0];
             size.SelectedIndex = frame.PixelWidth > frame.PixelHeight ? 1 : frame.PixelHeight > frame.PixelWidth ? 2 : 0;
             ShowOnlineSource(null);
-            reference = file; referenceLabel.Text = "Imagen seleccionada: " + Path.GetFileName(file) + ". Escribí qué querés cambiar.";
+            reference = file; useIdentity.IsChecked = false; referenceLabel.Text = "Imagen seleccionada: " + Path.GetFileName(file) + ". Escribí qué querés cambiar.";
             resultFile = IsOwnedExistingResult(file) ? file : null; LoadPreview(file); resultTitle.Text = "Imagen seleccionada"; Refresh();
         }
         catch (Exception ex) { status("No se pudo elegir la referencia: " + ex.Message); }
@@ -328,10 +364,12 @@ public sealed class VisualPane : UserControl
     {
         if (!IsOwnedExistingResult(file)) return; resultFile = file; resultTitle.Text = "Tu resultado"; LoadPreview(file); Refresh();
     }
+    private void ShowPreparedDescription(VisualJob job)
+    { preparedDescription.Text = job.PreparedPrompt ?? ""; preparedDetails.Visibility = string.IsNullOrWhiteSpace(job.PreparedPrompt) ? Visibility.Collapsed : Visibility.Visible; }
     private void LoadPreview(string file)
     {
         preview.Source = null;
-        if (Path.GetExtension(file).ToLowerInvariant() is ".png" or ".gif")
+        if (Path.GetExtension(file).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".gif")
         {
             try { var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.DecodePixelWidth = 600; bitmap.UriSource = new(file); bitmap.EndInit(); bitmap.Freeze(); preview.Source = bitmap; }
             catch (Exception ex) { status("El archivo se guardó, pero no se pudo mostrar: " + ex.Message); }
@@ -349,13 +387,19 @@ public sealed class VisualPane : UserControl
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image)); using (var output = File.Create(file)) encoder.Save(output);
         SetReference(file); task.SelectedIndex = 1;
         if (reference != file || !referenceLabel.Text.Contains("Imagen seleccionada") || generate.IsEnabled || IsActive || preview.Source is null) throw new Exception("La edición no conserva la referencia/vista previa o inicia procesos.");
+        task.SelectedIndex = 0; Refresh();
+        if (useIdentity.IsChecked == true || useIdentity.Visibility != Visibility.Visible || referenceActions.Visibility != Visibility.Visible) throw new Exception("La escena nueva hereda la identidad sin elegirla o no permite elegir una referencia.");
+        VisualReferencePicker.VerifyForTests(Window.GetWindow(this), file, paths.VisualInputs);
+        PreparedPromptWindow.VerifyForTests(Window.GetWindow(this));
         clear.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         if (reference is not null || task.SelectedIndex != 0 || !File.Exists(file)) throw new Exception("Imagen nueva no separa la referencia o borró la creación.");
         if (gallery.Visibility != Visibility.Collapsed || emptyGallery.Visibility != Visibility.Visible || creationHint.Visibility != Visibility.Visible) throw new Exception("El estado inicial no explica cómo empezar.");
         task.SelectedIndex = 2; size.SelectedIndex = 2; Refresh();
         if (!animationFormats || !size.IsEnabled || !size.Items[2].ToString()!.Contains("448 × 768") || animationHint.Visibility != Visibility.Visible) throw new Exception("La orientación de la animación no se puede elegir.");
+        if (reviewPreparedPrompt.Visibility != Visibility.Collapsed) throw new Exception("La revisión de la descripción se ofrece al animar.");
         task.SelectedIndex = 0; Refresh();
         if (animationFormats || !size.Items[2].ToString()!.Contains("768 × 1024")) throw new Exception("La animación alteró los formatos de imagen.");
+        if (reviewPreparedPrompt.Visibility != (settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed)) throw new Exception("La revisión de la descripción no sigue al asistente.");
     }
     private void Export()
     {
