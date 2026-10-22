@@ -342,7 +342,8 @@ public partial class MainWindow : Window
         visualPane.SetAvailable(available, compatible);
         if (visual)
         {
-            StartButton.IsEnabled = available && compatible && visualPane.IsPrepared && !visualPane.IsReady;
+            StartButton.IsEnabled = available && compatible && !visualPane.IsReady;
+            StartButton.ToolTip = visualPane.StartProblem is { Length: > 0 } reason ? reason : null;
             StartButton.Content = visualPane.IsReady ? "IA iniciada" : "Iniciar IA";
             StopButton.IsEnabled = available && visualPane.IsActive;
             ContextChoice.IsEnabled = AdvancedButton.IsEnabled = GitHubButton.IsEnabled = false;
@@ -359,7 +360,7 @@ public partial class MainWindow : Window
             var context = settings.ContextTokens; var engine = settings.EngineMode;
             WorkspaceChoice.SelectedIndex = 1; RefreshControls();
             if (settings.Mode != AppMode.Visual || VisualContainer.Visibility != Visibility.Visible || WelcomePane.Visibility == Visibility.Visible || ProjectArea.Visibility != Visibility.Collapsed
-                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.Visibility != Visibility.Visible || StartButton.IsEnabled || !ConfigurationSummary.Text.Contains("HiDream")) throw new Exception("No se aisló el espacio visual con inicio visible y sin activar modelos faltantes.");
+                || GitHubButton.Visibility != Visibility.Collapsed || StartButton.Visibility != Visibility.Visible || visualPane.StartProblem.Length == 0 || !ConfigurationSummary.Text.Contains("HiDream")) throw new Exception("No se aisló el espacio visual con inicio visible y una explicación de lo que falta.");
             busy = true; RefreshControls();
             if (CancelButton.Visibility != Visibility.Visible || WelcomePane.IsAncestorOf(CancelButton) || !Equals(CancelButton.Content, "Cancelar")) throw new Exception("La cancelación no es accesible desde el encabezado visual.");
             busy = false; RefreshControls();
@@ -714,7 +715,15 @@ public partial class MainWindow : Window
     {
         hardware = await HardwareDetector.DetectAsync(ct); if (hardware.Problem is { } problem) throw new InvalidOperationException(problem);
         if (settings.Mode == AppMode.Visual)
-        { await runtime.StopAsync(); await visualPane.StartAsync(ct); UpdateConfigurationSummary(); return; }
+        {
+            if (visualPane.StartProblem is { Length: > 0 } reason)
+            {
+                StatusLabel.Text = reason;
+                DetailLabel.Text = "Revisá Modelos y descargas en el panel visual; lo descargado se reutiliza.";
+                return;
+            }
+            await runtime.StopAsync(); await visualPane.StartAsync(ct); UpdateConfigurationSummary(); return;
+        }
         await visualPane.StopAsync();
         ApplyHardwareProfile();
         var gpu = hardware.SelectedGpu!;

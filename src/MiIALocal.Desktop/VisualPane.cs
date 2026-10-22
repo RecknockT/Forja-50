@@ -217,6 +217,10 @@ public sealed class VisualPane : UserControl
     public void SetAvailable(bool available, bool compatible)
     { this.available = available; this.compatible = compatible; Refresh(); }
     private void Save() { paths.SaveSettings(settings()); changed(); }
+    /// <summary>Empty when the visual mode can start; otherwise the exact reason it cannot.</summary>
+    public string StartProblem => gpu() is null
+        ? "No se detectó una placa compatible (RTX 5070 Ti, RTX 5080 o RTX 3090)."
+        : IsPrepared ? "" : MissingDescription();
     /// <summary>Say which file is missing instead of a generic "download the models".</summary>
     private string MissingDescription()
     {

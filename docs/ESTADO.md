@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.9.
+22 de octubre de 2026 · desarrollo 0.4.10.
+
+## Inicio explicado · 0.4.10
+
+- Iniciar IA ya no queda deshabilitado en silencio: el botón está disponible y, al pulsarlo, la app indica el motivo exacto (motor o modelo faltante, con nombre y tamaño) en la barra de estado; el tooltip del botón muestra el mismo motivo. Antes el aviso era genérico y no permitía distinguir un modelo pendiente de otro bloqueo.
+- Se verificó el origen del checkpoint Full (tamaño y hash coinciden con el catálogo) y que preparar comprueba por hash cada archivo: si no descarga nada, los archivos presentes coinciden.
+- Pruebas: 92 del conjunto completo y la comprobación de ventana, sin modelos ni GPU.
 
 ## Diagnóstico de modelos faltantes · 0.4.9
 

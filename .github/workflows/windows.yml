@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.10: Iniciar IA ya no queda deshabilitado en silencio. El boton se puede pulsar siempre y la app indica el motivo exacto, con nombre y tamano del archivo pendiente; el tooltip muestra lo mismo. Sin modelos ni GPU en CI; validacion fisica pendiente.
+
             0.4.9: el modo visual informa que archivo falta para poder iniciar, con su nombre y tamano, en lugar del aviso generico de descargar modelos. Si lo unico pendiente es el checkpoint Full para editar, recuerda que se puede empezar con Dev. Sin modelos ni GPU en CI; validacion fisica pendiente.
 
             0.4.8: el asistente descriptivo queda en Gemma 4 E4B INT8, el mismo escalon que usa la plantilla oficial de ComfyUI. Se adopta su limite de 2048 tokens (antes 512) para que la descripcion no se corte, y mtp pasa a automatico. Sin modelos ni GPU en CI; validacion fisica pendiente.
