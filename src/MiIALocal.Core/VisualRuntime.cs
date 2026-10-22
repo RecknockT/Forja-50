@@ -148,6 +148,7 @@ public sealed class ComfyClient
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new IOException("El asistente agotó el tiempo de preparación. Podés desactivarlo y usar tu descripción original, o reiniciar la IA.", ex); }
         var text = ReadPreparedPrompt(result);
         if (text is null) throw new IOException("El asistente no devolvió una descripción utilizable. Revisá Diagnóstico.");
+        text = VisualPrompts.EnsureNamedSubject(text, request.Prompt, referenceTitle);
         LastPreparedPrompt = text;
         return text;
     }

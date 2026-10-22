@@ -55,6 +55,8 @@ static class VisualTests
         await test("HiDream: editar usa el programador de flujo sin la reinyección de ruido", () =>
         {
             var prefix = new string('a', 32);
+            assert(VisualSizes.ForEdit(1024, 1024) == (1024, 1024) && VisualSizes.ForEdit(3000, 2000) == (2048, 1344) && VisualSizes.ForEdit(200, 300) == (256, 288), "El tamaño de edición no sigue a la imagen elegida.");
+            assert(VisualSizes.ForEdit(4000, 1000) == (2048, 512), "El tamaño de edición no limita el lado mayor.");
             var edit = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá solo el brazo", 1024, 1024, 42), prefix, "reference.png"));
             assert(edit.GetProperty("9").GetProperty("class_type").GetString() == "KSamplerSelect", "La edición conserva el muestreador destilado.");
             assert(edit.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "euler", "La edición no usa Euler de flujo.");
@@ -86,6 +88,25 @@ static class VisualTests
             assert(prepared.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("permanecer igual"), "Editar no usa la instrucción de edición.");
             return Task.CompletedTask;
         });
+        await test("Asistente: el nombre pedido sobrevive a la descripción preparada", async () =>
+        {
+            assert(VisualPrompts.EnsureNamedSubject("An anime elf in a forest.", "la elfa del anime frieren", null).Contains("frieren"), "Se perdió el nombre detectado.");
+            assert(VisualPrompts.EnsureNamedSubject("An elf.", "una elfa", "Frieren (character)") == "Featuring Frieren. An elf.", "No se impuso el título de la referencia.");
+            assert(VisualPrompts.EnsureNamedSubject("Frieren in a forest.", "frieren", null) == "Frieren in a forest.", "Se duplicó un nombre ya presente.");
+            assert(VisualPrompts.EnsureNamedSubject("A robot.", "un robot caminando", null) == "A robot.", "Se agregó un nombre inexistente.");
+            var request = new VisualRequest(VisualTask.Image, "la elfa del anime frieren", 1024, 1024, 42, EnhancePrompt: true);
+            var prepared = VisualWorkflows.BuildPrepare(request, null, "Frieren (character)");
+            var nodes = prepared.Values.Select(n => JsonSerializer.SerializeToElement(n).GetProperty("class_type").GetString()!).Distinct().ToDictionary(x => x, _ => new { });
+            var promptId = Guid.NewGuid().ToString();
+            using var http = new HttpClient(new AsyncHandler((message, _) => Task.FromResult(message.RequestUri!.AbsolutePath switch
+            {
+                "/object_info" => Json(nodes),
+                "/prompt" => Json(new { prompt_id = promptId }),
+                _ => Json(new Dictionary<string, object> { [promptId] = new { status = new { completed = true, status_str = "success" }, outputs = new Dictionary<string, object> { ["32"] = new { text = new[] { "A generic elf in a forest." } } } } })
+            })));
+            var text = await new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture").PreparePromptAsync(request, null, null, default, false, null, "Frieren (character)");
+            assert(text.Contains("Frieren") && text.Contains("A generic elf"), "La descripción preparada perdió el nombre pedido.");
+        });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
         {
             var card = new GpuInfo(0, "NVIDIA GeForce RTX 3090", 24576, 24576, "fixture");
@@ -105,6 +126,9 @@ static class VisualTests
             assert(VisualReferenceSearch.SuggestSubject("Sailor Moon la guerrera, volando") == "Sailor Moon", "Se recorta un nombre compuesto.");
             assert(VisualReferenceSearch.SuggestSubject("generar una imagen de frieren volando") == "frieren", "La búsqueda incluye la acción.");
             assert(VisualReferenceSearch.SuggestSubject("Create an image of Frieren flying") == "Frieren", "La sugerencia en inglés incluye el pedido.");
+            foreach (var phrase in new[] { "frieren (la elfa del anime)", "la elfa del anime frieren", "quiero a frieren, la elfa del anime", "una elfa del anime llamada frieren" })
+                assert(VisualReferenceSearch.AutomaticSubject(phrase)?.Equals("frieren", StringComparison.OrdinalIgnoreCase) == true, "Se pierde el nombre en: " + phrase);
+            assert(VisualReferenceSearch.AutomaticSubject("una elfa genérica en un bosque") is null, "Una descripción sin nombre se convierte en referencia.");
             assert(VisualReferenceSearch.SuggestSubject("") == "", "El pedido vacío falla.");
             var series = new VisualReference("Frieren", "https://en.wikipedia.org/wiki/Frieren", "https://upload.wikimedia.org/series.jpg", "Frieren");
             var character = series with { Title = "Frieren (character)" };

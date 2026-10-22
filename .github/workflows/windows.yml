@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.4: el nombre pedido ya no se pierde. El detector conserva nombres en frases naturales y, si el asistente lo omite, Forja antepone el nombre (o el titulo de la referencia elegida) a la descripcion preparada. Editar usa el tamano y el encuadre de la imagen elegida, como el flujo oficial de HiDream, en lugar de agrandarla y rellenarla con bordes. Sin modelos ni GPU en CI; validacion fisica pendiente.
+
             0.4.3: la descripcion se entiende en el idioma del usuario y conserva los nombres propios escritos; el asistente deja de perder el personaje pedido. Edicion con el programador de flujo que recomienda HiDream, sin la reinyeccion de ruido por paso que producia grano. Las referencias de Wikipedia descartan paginas de desambiguacion. La animacion tambien prepara su instruccion de movimiento en ingles con revision editable. Escalera de calidad recomendada en 2048. Revision de descripcion editable antes de generar. Sin modelos ni GPU en CI; validacion fisica pendiente en las tres placas.
 
             0.4.2: interfaz WPF con renderizado compatible por software para evitar el camino acelerado ante bloques blancos. No cambia la inferencia CUDA ni los modelos. Preferencia verificada por la prueba de modos; pendiente confirmar en pantalla bajo las condiciones del fallo.

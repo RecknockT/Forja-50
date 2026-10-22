@@ -1,6 +1,13 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.3.
+22 de octubre de 2026 · desarrollo 0.4.4.
+
+## Nombre pedido y edición · 0.4.4
+
+- El detector de nombres descartaba el nombre en frases naturales («la elfa del anime frieren», «una elfa del anime llamada frieren») y la búsqueda no llegaba a ofrecer la referencia; se filtra el relleno en cualquier posición y se conserva el nombre, sin dejar de descartar conceptos generales como «anime de los 90».
+- Garantía en código: si la persona nombró un personaje y el asistente no lo escribe, la descripción preparada lo antepone («Featuring \<nombre\>.»), usando el título de la referencia elegida cuando existe. No depende del modelo chico.
+- Edición: el resultado usa el tamaño de la imagen elegida, redondeado a múltiplos de 32 y limitado a 2048 de lado, como el flujo oficial de edición de HiDream. Antes se agrandaba al tamaño de la escalera de calidad y se rellenaba con bordes replicados, lo que podía introducir artefactos.
+- Pruebas: 90 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Pendiente la prueba física de edición; el autor recomienda el modelo Full para editar y sigue sin descargarse por defecto.
 
 ## Compatibilidad del dibujo de la interfaz · 0.4.2
 

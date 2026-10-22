@@ -67,6 +67,7 @@ public sealed class VisualPane : UserControl
     private readonly Image preview = new() { Height = 220, Stretch = Stretch.Uniform };
     private readonly ListBox gallery = new() { Height = 145 };
     private string? reference;
+    private (int Width, int Height)? referencePixels;
     private string? resultFile;
     private bool available, compatible, preparing, generating, loading, wasPrepared, animationFormats;
     public bool IsReady => runtime.IsReady;
@@ -176,7 +177,7 @@ public sealed class VisualPane : UserControl
             var picker = new OpenFileDialog { Filter = "Imágenes|*.png;*.jpg;*.jpeg", Title = "Elegir imagen de referencia" };
             if (picker.ShowDialog(Window.GetWindow(this)) == true) { SetReference(picker.FileName); if (task.SelectedIndex == 0 && reference == picker.FileName) useIdentity.IsChecked = true; Refresh(); }
         };
-        clear.Click += (_, _) => { reference = null; useIdentity.IsChecked = false; ShowOnlineSource(null); referenceLabel.Text = "Sin referencia: se creará una imagen nueva."; task.SelectedIndex = 0; Refresh(); };
+        clear.Click += (_, _) => { reference = null; referencePixels = null; useIdentity.IsChecked = false; ShowOnlineSource(null); referenceLabel.Text = "Sin referencia: se creará una imagen nueva."; task.SelectedIndex = 0; Refresh(); };
         generate.Click += async (_, _) => await GenerateAsync();
         open.Click += (_, _) => { if (resultFile is not null && File.Exists(resultFile)) OpenPath(resultFile); };
         export.Click += (_, _) => Export();
@@ -244,7 +245,7 @@ public sealed class VisualPane : UserControl
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
-        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
+        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar. El resultado conserva su tamaño y encuadre.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
         referenceActions.Visibility = Visibility.Visible;
         useIdentity.Visibility = task.SelectedIndex == 0 && reference is not null ? Visibility.Visible : Visibility.Collapsed;
         clear.Visibility = reference is null ? Visibility.Collapsed : Visibility.Visible;
@@ -272,6 +273,7 @@ public sealed class VisualPane : UserControl
             var side = imageQuality.SelectedIndex switch { 1 => 1536, 2 => 2048, _ => 1024 };
             var (width, height) = size.SelectedIndex switch { 1 => (side, side * 3 / 4), 2 => (side * 3 / 4, side), _ => (side, side) };
             var kind = (VisualTask)task.SelectedIndex;
+            if (kind == VisualTask.Edit && reference is not null && referencePixels is { } pixels) (width, height) = VisualSizes.ForEdit(pixels.Width, pixels.Height);
             var frames = duration.SelectedIndex == 1 ? 121 : 73;
             if (kind == VisualTask.Animation) (width, height) = VisualAnimation.Dimensions(size.SelectedIndex);
             if (kind != VisualTask.Animation) { visual.Width = width; visual.Height = height; }
@@ -358,6 +360,7 @@ public sealed class VisualPane : UserControl
             if (decoder.Frames[0].PixelWidth > 8192 || decoder.Frames[0].PixelHeight > 8192) throw new IOException("La referencia supera 8192 píxeles por lado.");
             var frame = decoder.Frames[0];
             size.SelectedIndex = frame.PixelWidth > frame.PixelHeight ? 1 : frame.PixelHeight > frame.PixelWidth ? 2 : 0;
+            referencePixels = (frame.PixelWidth, frame.PixelHeight);
             ShowOnlineSource(null);
             reference = file; useIdentity.IsChecked = false; referenceLabel.Text = "Imagen seleccionada: " + Path.GetFileName(file) + ". Escribí qué querés cambiar.";
             resultFile = IsOwnedExistingResult(file) ? file : null; LoadPreview(file); resultTitle.Text = "Imagen seleccionada"; Refresh();

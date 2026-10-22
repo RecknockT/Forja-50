@@ -56,6 +56,22 @@ public static class VisualCatalog
 /// <summary>Assistant caption reviewed by the person plus the staged input it was prepared with.</summary>
 public sealed record PreparedPrompt(string Text, string? StagedReference, double PreparationSeconds = 0);
 
+/// <summary>
+/// Editing follows the chosen image, as HiDream's official edit workflow does (its latent size
+/// comes from the reference). Upscaling a small image or padding bars produced artifacts.
+/// </summary>
+public static class VisualSizes
+{
+    public static (int Width, int Height) ForEdit(int width, int height)
+    {
+        if (width < 1 || height < 1) return (1024, 1024);
+        var scale = Math.Min(1.0, 2048.0 / Math.Max(width, height));
+        var w = Math.Clamp((int)Math.Round(width * scale) / 32 * 32, 256, 2048);
+        var h = Math.Clamp((int)Math.Round(height * scale) / 32 * 32, 256, 2048);
+        return (w, h);
+    }
+}
+
 public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, int Height, long Seed, int Frames = 73, int Steps = 20, bool HighPrecision = false, bool EnhancePrompt = false)
 {
     public void Validate()

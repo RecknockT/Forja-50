@@ -20,17 +20,20 @@ public sealed class VisualReferenceSearch : IDisposable
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Forja50/0.3 (https://github.com/RecknockT/Forja-50)");
     }
 
+    private static readonly HashSet<string> Leading = new("generar genera generá generate crear crea creá create dibujar dibuja dibujá draw hacer hace hacé haz quiero una un an imagen image foto picture of de del a por favor please me dame mostrame mostrar render".Split(' '), StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> Actions = new("volando flying caminando walking corriendo running sentado sentada sitting saltando jumping luchando fighting bailando dancing con with sobre above en in bajo under al at estilo style".Split(' '), StringComparer.OrdinalIgnoreCase);
+    // Filler words describe the request or the kind of subject, so they must never be taken as a name.
+    private static readonly HashSet<string> Fillers = new("la el las los un una unos unas the a an de del al of from y and que se llama llamada llamado como as elfa elfo elf personaje character protagonista chica chico girl boy mujer woman hombre man maga mago wizard mage guerrera guerrero warrior espadachin anime manga animacion animación serie series pelicula película movie dibujo ilustracion ilustración illustration estetica estética aesthetic noventera noventero ochentera setentera retro vintage futurista generica genérica generico genérico comun común simple new nueva nuevo".Split(' '), StringComparer.OrdinalIgnoreCase);
+
     public static string SuggestSubject(string prompt)
     {
         var words = Regex.Matches(prompt, @"[\p{L}\p{N}]+(?:[-'][\p{L}\p{N}]+)*").Select(m => m.Value).ToList();
-        var leading = new HashSet<string>("generar genera generá generate crear crea creá create dibujar dibuja dibujá draw hacer hace hacé haz quiero una un an imagen image foto picture of de del a por favor please me dame mostrame mostrar render".Split(' '), StringComparer.OrdinalIgnoreCase);
-        while (words.Count > 0 && leading.Contains(words[0])) words.RemoveAt(0);
-        var actions = new HashSet<string>("volando flying caminando walking corriendo running sentado sentada sitting saltando jumping luchando fighting bailando dancing con with sobre above en in bajo under al at estilo style".Split(' '), StringComparer.OrdinalIgnoreCase);
-        var stop = words.Count > 1 ? words.FindIndex(1, words.Count - 1, word => actions.Contains(word)) : -1;
+        while (words.Count > 0 && (Leading.Contains(words[0]) || Fillers.Contains(words[0]) || Actions.Contains(words[0]))) words.RemoveAt(0);
+        var stop = words.Count > 1 ? words.FindIndex(1, words.Count - 1, word => Actions.Contains(word)) : -1;
         if (stop >= 0) words.RemoveRange(stop, words.Count - stop);
-        var subject = string.Join(' ', words.Take(12));
-        subject = Regex.Replace(subject, @"\s+(?:(?:la|el|los|las|the)\s+(?:elfa|elfo|elf|personaje|character|mago|maga|wizard|mage|guerrera|guerrero|warrior|protagonista|protagonist|chica|chico|girl|boy)|(?:del|de|from(?:\s+the)?)\s+(?:anime|manga|serie|series|película|pelicula|movie)|que\s+es)\b.*$", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        subject = string.Join(' ', subject.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(6));
+        // Remove filler anywhere so "la elfa del anime frieren" still yields the name.
+        words.RemoveAll(Fillers.Contains);
+        var subject = string.Join(' ', words.Take(6));
         return subject.Length > 100 ? subject[..100] : subject;
     }
 
