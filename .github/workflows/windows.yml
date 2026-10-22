@@ -89,7 +89,9 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
-            0.4.15: corrige el rechazo de ComfyUI al crear o editar con referencia. El nodo de ajuste de la referencia limitaba el lienzo a 2048 por lado, mientras el ajuste a resolucion entrenada pide hasta 3104 (retratos 1664x2496, panoramicas 2560x1440): el motor rechazaba el grafo y la app detenia la IA. Ademas, un rechazo ahora informa el nodo y el motivo. Sin modelos ni GPU en CI; validacion fisica pendiente.
+            0.4.16: al editar o crear con referencia, el asistente ahora recibe el nombre del sujeto (del historial de la referencia usada) y las instrucciones piden resolver el conocimiento implicito de la obra (companeros, objetos, lugares) con sus nombres y rasgos, en lugar de personajes genericos. Sin modelos ni GPU en CI; validacion fisica pendiente.
+
+            0.4.15: corrige el rechazo de ComfyUI al crear o editar con referencia. El nodo de ajuste de la referencia limitaba el lienzo a 2048 por lado, mientras el ajuste a resolucion entrenada pide hasta 3104: el motor rechazaba el grafo y la app detenia la IA. Ademas, un rechazo ahora informa el nodo y el motivo. Sin modelos ni GPU en CI; validacion fisica pendiente.
 
             0.4.14: el asistente descriptivo se puede cambiar a Gemma 4 12B INT8 (11,2 GB, mejor calidad y ~2-3x mas lento) desde Modelos y descargas; el E4B sigue siendo el valor inicial y se conserva. El archivo elegido viaja al grafo y la preparacion lo verifica, animacion incluida. Sin modelos ni GPU en CI; validacion fisica pendiente.
 

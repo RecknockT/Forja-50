@@ -70,6 +70,7 @@ public sealed class VisualPane : UserControl
     private readonly ListBox gallery = new() { Height = 145 };
     private string? reference;
     private (int Width, int Height)? referencePixels;
+    private string? referenceSubject;
     private string? resultFile;
     private bool available, compatible, preparing, generating, loading, wasPrepared, animationFormats;
     public bool IsReady => runtime.IsReady;
@@ -207,7 +208,7 @@ public sealed class VisualPane : UserControl
             var picker = new OpenFileDialog { Filter = "Imágenes|*.png;*.jpg;*.jpeg", Title = "Elegir imagen de referencia" };
             if (picker.ShowDialog(Window.GetWindow(this)) == true) { SetReference(picker.FileName); if (task.SelectedIndex == 0 && reference == picker.FileName) useIdentity.IsChecked = true; Refresh(); }
         };
-        clear.Click += (_, _) => { reference = null; referencePixels = null; useIdentity.IsChecked = false; ShowOnlineSource(null); referenceLabel.Text = "Sin referencia: se creará una imagen nueva."; task.SelectedIndex = 0; Refresh(); };
+        clear.Click += (_, _) => { reference = null; referencePixels = null; referenceSubject = null; useIdentity.IsChecked = false; ShowOnlineSource(null); referenceLabel.Text = "Sin referencia: se creará una imagen nueva."; task.SelectedIndex = 0; Refresh(); };
         generate.Click += async (_, _) => await GenerateAsync();
         open.Click += (_, _) => { if (resultFile is not null && File.Exists(resultFile)) OpenPath(resultFile); };
         export.Click += (_, _) => Export();
@@ -219,7 +220,7 @@ public sealed class VisualPane : UserControl
             ShowResult(file);
             if (Path.GetExtension(file).Equals(".png", StringComparison.OrdinalIgnoreCase)) { SetReference(file); task.SelectedIndex = 1; }
             ShowUsedSource(item.Job.OnlineReference);
-            ShowPreparedDescription(item.Job);
+            referenceSubject = item.Job.OnlineReference?.Title;            ShowPreparedDescription(item.Job);
         };
         ReloadSettings(); LoadGallery();
     }
@@ -371,6 +372,8 @@ public sealed class VisualPane : UserControl
             }
             else if (kind == VisualTask.Image) { if (chosenReference is null) ShowOnlineSource(null); webStatus.Text = chosenReference is null ? "Creación sin búsqueda en internet." : "Se usa la imagen seleccionada como referencia del personaje."; }
             var lookupNote = webStatus.Text;
+            // The assistant needs the subject's name to resolve requests like "add her anime companions".
+            var contextTitle = discovered?.Title ?? (chosenReference is not null ? referenceSubject : null);
             // A single reference defines the framing, as HiDream's official workflow does: the model
             // copies a wide reference (a series cover, a landscape) when the target is padded to another shape.
             if (kind != VisualTask.Animation && chosenReference is not null && referencePixels is { } frame)
@@ -378,18 +381,18 @@ public sealed class VisualPane : UserControl
             if (visual.EnhancePrompt)
             {
                 status(kind == VisualTask.Animation ? "Preparando la descripción del movimiento con el asistente visual…" : "Preparando la descripción con el asistente visual…");
-                var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
+                var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered, contextTitle);
                 if (visual.ReviewPreparedPrompt)
                 {
                     var reviewed = PreparedPromptWindow.Show(Window.GetWindow(this), current.Text, request.Prompt, chosenReference is not null,
-                        async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token, discovered)).Text, ct);
+                        async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token, discovered, contextTitle)).Text, ct);
                     if (reviewed is null) { status("Generación cancelada. Tu pedido sigue en el cuadro de texto."); return; }
                     current = current with { Text = reviewed };
                 }
                 prepared = current;
             }
             status(kind == VisualTask.Animation ? "Preparando la animación; la primera carga puede tardar…" : "Preparando tu imagen…");
-            var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered, prepared);
+            var job = await runtime.GenerateAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered, prepared, contextTitle);
             LoadGallery();
             var file = job.Files.FirstOrDefault(f => Path.GetExtension(f) == ".png") ?? job.Files.First();
             ShowResult(file);
@@ -416,6 +419,9 @@ public sealed class VisualPane : UserControl
             referencePixels = (frame.PixelWidth, frame.PixelHeight);
             ShowOnlineSource(null);
             reference = file; useIdentity.IsChecked = false; referenceLabel.Text = "Imagen seleccionada: " + Path.GetFileName(file) + ". Escribí qué querés cambiar.";
+            // The result may come from a generation whose reference identified the subject; the assistant
+            // needs that name to resolve requests like "add her anime companions".
+            referenceSubject = IsOwnedExistingResult(file) ? new VisualJobStore(paths).Read().FirstOrDefault(j => j.Files.Contains(file, StringComparer.OrdinalIgnoreCase))?.OnlineReference?.Title : null;
             if ((long)frame.PixelWidth * frame.PixelHeight < 1_700_000) status("Imagen pequeña para editar (" + Math.Round(frame.PixelWidth * (double)frame.PixelHeight / 1e6, 1) + " MP): la edición rinde mejor desde 1,7 MP. Conviene generarla antes y editarla a mayor tamaño.");
             resultFile = IsOwnedExistingResult(file) ? file : null; LoadPreview(file); resultTitle.Text = "Imagen seleccionada"; Refresh();
         }

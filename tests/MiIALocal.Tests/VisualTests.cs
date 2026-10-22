@@ -91,6 +91,7 @@ static class VisualTests
             assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("paisaje"), "Una referencia amplia puede convertirse en el tema.");
             assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("prompt").GetString()!.Contains("Frieren (character)"), "Se pierde el nombre de la referencia elegida.");
             var prepared = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Edit, "cambiá el brazo a rojo", 1024, 1024, 42, EnhancePrompt: true), "ref.png"));
+            assert(prepared.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("conocimiento implícito"), "Editar no resuelve el conocimiento implícito del pedido.");
             assert(prepared.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("permanecer igual"), "Editar no usa la instrucción de edición.");
             return Task.CompletedTask;
         });

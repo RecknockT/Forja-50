@@ -10,7 +10,7 @@ public enum AppMode { Programming, Visual }
 
 public static class ReleaseProfile
 {
-    public const string Version = "0.4.15-dev";
+    public const string Version = "0.4.16-dev";
     public const string ModelName = "Qwen 27B · Swift 1.5 IQ3_S";
     public const int Context = 65536;
     public const int MaxOutput = 8192;

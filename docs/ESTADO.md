@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.15.
+22 de octubre de 2026 · desarrollo 0.4.16.
+
+## Conocimiento implícito al editar · 0.4.16
+
+- Pedido observado: al editar y pedir «agrega a sus compañeros del anime», salían personajes genéricos. Causa doble: las instrucciones de edición no pedían resolver el conocimiento implícito, y el asistente no recibía el nombre del sujeto (la referencia de una edición es un archivo local, sin título).
+- Corregido: las instrucciones de crear con referencia y de editar ahora piden resolver elementos conocidos de la obra (compañeros, vehículos, lugares, objetos) con sus nombres y rasgos característicos en lugar de descripciones genéricas, sin inventar personajes ajenos. Además, el asistente recibe el **nombre del sujeto** de la generación que produjo la imagen (procedente de la referencia de Wikipedia usada, conservada en el historial), también al editar.
+- Pruebas: 95 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. Esta clase de pedido depende del conocimiento del modelo: el asistente 12B (0.4.14) ayuda bastante en este caso.
 
 ## Nodo de referencia y rechazos explicados · 0.4.15
 

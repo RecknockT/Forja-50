@@ -47,7 +47,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         catch { await StopWorkerAsync(); throw; }
         finally { gate.Release(); }
     }
-    public async Task<PreparedPrompt> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null)
+    public async Task<PreparedPrompt> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null, string? contextTitle = null)
     {
         await gate.WaitAsync(ct);
         try
@@ -59,7 +59,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             var input = StageReference(reference);
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            var text = await client.PreparePromptAsync(request, input, progress, ct, true, null, onlineReference?.Title);
+            var text = await client.PreparePromptAsync(request, input, progress, ct, true, null, contextTitle ?? onlineReference?.Title);
             return new(text, input, elapsed.Elapsed.TotalSeconds);
         }
         catch
@@ -69,7 +69,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         }
         finally { gate.Release(); }
     }
-    public async Task<VisualJob> GenerateAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null, PreparedPrompt? prepared = null)
+    public async Task<VisualJob> GenerateAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null, PreparedPrompt? prepared = null, string? contextTitle = null)
     {
         await gate.WaitAsync(ct);
         var store = new VisualJobStore(paths); VisualJob? job = null;
@@ -85,7 +85,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             job = new() { Request = request, Reference = input, OnlineReference = onlineReference, Status = "Generando" }; store.Save(job);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(45));
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token, true, prepared?.Text, onlineReference?.Title);
+            job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token, true, prepared?.Text, contextTitle ?? onlineReference?.Title);
             job.PreparedPrompt = client.LastPreparedPrompt; job.TotalSeconds = elapsed.Elapsed.TotalSeconds + (prepared?.PreparationSeconds ?? 0);
             job.Status = "Completado"; store.Save(job); return job;
         }
