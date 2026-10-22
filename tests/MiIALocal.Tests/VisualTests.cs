@@ -441,6 +441,8 @@ static class VisualTests
             assert(missing.Length == 3 && missing.Contains(VisualCatalog.HiDreamFull) && missing.Contains(VisualCatalog.PromptAssistant) && missing.Contains(VisualCatalog.HiDream), "No se informa qué falta descargar.");
             assert(provisioner.Missing(false, null, true, false).Length == 2 && !provisioner.Missing(false, null, true, false).Contains(VisualCatalog.HiDreamFull), "Desactivar el modelo Full debe quitar su descarga.");
             assert(provisioner.Missing(true, null, true, true).Contains(VisualCatalog.Wan), "La animación debe informar su modelo propio.");
+            var report = provisioner.Report(false, null, true, true);
+            assert(report.Contains("FALTA") && report.Contains("HiDream-O1 Full") && report.Contains("Puede iniciar: no"), "El informe no describe el estado real.");
             return Task.CompletedTask;
         });
         await test("Visual: no aceptar salidas fuera de la carpeta o de otro trabajo", () =>

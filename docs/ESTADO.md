@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.10.
+22 de octubre de 2026 · desarrollo 0.4.11.
+
+## Informe de comprobación · 0.4.11
+
+- Nuevo botón **«Comprobar todo y guardar informe»** en Modelos y descargas: escribe en `logs` el estado del motor (marca, python, `main.py`), cada modelo esperado con su ruta, bytes esperados y reales, las opciones activas (asistente, modelo Full, animación), la placa y si puede iniciar; después abre el archivo.
+- Motivo: el aviso ya nombraba el modelo pendiente, pero hacía falta ver el estado real de los archivos para distinguir una descarga incompleta de otra causa, sin depender de conjeturas.
+- Pruebas: 92 del conjunto completo y la comprobación de ventana, sin modelos ni GPU.
 
 ## Inicio explicado · 0.4.10
 

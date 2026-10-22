@@ -25,6 +25,30 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
     /// <summary>True when the engine itself (not a model) is what is missing.</summary>
     public bool RuntimeMissing => !File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"));
 
+    /// <summary>Human readable state of the engine and every expected model, to diagnose a blocked start.</summary>
+    public string Report(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
+    {
+        var text = new System.Text.StringBuilder();
+        text.AppendLine("Forja 50 · comprobación del modo visual");
+        text.AppendLine("Datos: " + paths.Root);
+        text.AppendLine("Motor: " + paths.ComfyRoot);
+        text.AppendLine("Marca del motor: " + (File.Exists(Marker) ? "presente" : "falta") + " · " + Path.GetFileName(Marker));
+        text.AppendLine("Python del motor: " + (File.Exists(paths.ComfyPython) ? "presente" : "falta") + " · " + paths.ComfyPython);
+        text.AppendLine("main.py: " + (File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py")) ? "presente" : "falta"));
+        text.AppendLine("Opciones: asistente=" + assistant + " · modelo Full para editar=" + fullEdit + " · animación=" + animation);
+        text.AppendLine("Placa: " + (gpu is null ? "no detectada" : gpu.Name + " · " + gpu.FreeMiB + " MiB libres"));
+        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit))
+        {
+            var file = VisualCatalog.PathFor(paths, model);
+            var exists = File.Exists(file);
+            var actual = exists ? new FileInfo(file).Length : 0;
+            var state = !exists ? "FALTA" : actual == model.Asset.Bytes ? "correcto" : "tamaño distinto";
+            text.AppendLine("- " + model.Asset.Name + ": " + state + " · " + actual + " de " + model.Asset.Bytes + " bytes · " + file);
+        }
+        text.AppendLine("Puede iniciar: " + (IsPrepared(animation, gpu, assistant, fullEdit) ? "sí" : "no"));
+        return text.ToString();
+    }
+
     public long RequiredFreeBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
     {
         long required = 2_000_000_000;

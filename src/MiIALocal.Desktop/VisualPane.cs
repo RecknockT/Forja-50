@@ -96,6 +96,20 @@ public sealed class VisualPane : UserControl
         preparation.Children.Add(importModels);
         var licenses = new Button { Content = "Leer licencias", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10) };
         licenses.Click += (_, _) => ShowLicenses(); preparation.Children.Add(licenses);
+        var check = new Button { Content = "Comprobar todo y guardar informe", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10), FontSize = 12 };
+        check.Click += (_, _) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(paths.Logs);
+                var file = Path.Combine(paths.Logs, "comprobacion-visual-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt");
+                File.WriteAllText(file, provisioner.Report(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit));
+                status(StartProblem is { Length: > 0 } reason ? reason : "Todo listo para iniciar.");
+                OpenPath(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { status("No se pudo guardar el informe: " + ex.Message); }
+        };
+        preparation.Children.Add(check);
         preparation.Children.Add(license); license.Margin = new(0, 0, 0, 12); license.Content = "Revisé y acepto las licencias de HiDream y los componentes visuales";
         preparation.Children.Add(new Expander { Header = "Ver componentes y ubicaciones", Foreground = Brushes.LightGray, Content = details, Margin = new(0, 10, 0, 0) });
         downloads.Header = "Modelos y descargas"; downloads.Content = preparation; downloads.IsExpanded = !IsPrepared;
