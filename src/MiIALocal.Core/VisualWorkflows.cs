@@ -28,7 +28,7 @@ public static class VisualWorkflows
                 object prepared = instruction;
                 if (r.EnhancePrompt)
                 {
-                    AddAssistant(graph, AssistantInput(r, referenceTitle), SystemPrompt(r, reference is not null), reference is not null, r.Seed);
+                    AddAssistant(graph, AssistantInput(r, referenceTitle), SystemPrompt(r, reference is not null), reference is not null, r.Seed, VisualCatalog.Assistant(r.LargeAssistant).Asset.FileName);
                     prepared = Link("31");
                 }
                 Node("32", "ForjaPreparedPrompt", ("text", prepared));
@@ -105,17 +105,17 @@ public static class VisualWorkflows
             Node("20", "LoadImage", ("image", reference));
             Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
         }
-        AddAssistant(graph, AssistantInput(r, referenceTitle), SystemPrompt(r, reference is not null), reference is not null, r.Seed);
+        AddAssistant(graph, AssistantInput(r, referenceTitle), SystemPrompt(r, reference is not null), reference is not null, r.Seed, VisualCatalog.Assistant(r.LargeAssistant).Asset.FileName);
         Node("32", "ForjaPreparedPrompt", ("text", Link("31")));
         return graph;
     }
 
-    private static void AddAssistant(Dictionary<string, object> graph, string instruction, string systemPrompt, bool hasReference, long seed)
+    private static void AddAssistant(Dictionary<string, object> graph, string instruction, string systemPrompt, bool hasReference, long seed, string assistantFile)
     {
         void Node(string id, string type, params (string, object)[] inputs)
         { var values = inputs.ToDictionary(x => x.Item1, x => x.Item2); graph[id] = new { class_type = type, inputs = values }; }
         object[] Link(string id, int slot = 0) => [id, slot];
-        Node("30", "ForjaAssistantLoader", ("clip_name", VisualCatalog.PromptAssistant.Asset.FileName));
+        Node("30", "ForjaAssistantLoader", ("clip_name", assistantFile));
         var preparation = AddTextGenerate(graph, instruction, systemPrompt, seed);
         if (hasReference)
         {

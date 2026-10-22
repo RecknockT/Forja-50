@@ -7,14 +7,14 @@ namespace MiIALocal.Core;
 public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloader)
 {
     private string Marker => Path.Combine(paths.ComfyRoot, ".forja-" + VisualCatalog.Runtime.Sha256[..16]);
-    public bool IsPrepared(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false) => !RuntimeMissing && Missing(animation, gpu, assistant, fullEdit).Length == 0;
+    public bool IsPrepared(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false) => !RuntimeMissing && Missing(animation, gpu, assistant, fullEdit, largeAssistant).Length == 0;
 
     /// <summary>Models that are still missing or incomplete, so the app can say which one blocks the start.</summary>
-    public VisualModel[] Missing(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
+    public VisualModel[] Missing(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false)
     {
         if (!File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"))) return [];
         var missing = new List<VisualModel>();
-        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit))
+        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit, largeAssistant))
         {
             var file = VisualCatalog.PathFor(paths, model);
             if (!File.Exists(file) || new FileInfo(file).Length != model.Asset.Bytes) missing.Add(model);
@@ -26,7 +26,7 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
     public bool RuntimeMissing => !File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py"));
 
     /// <summary>Human readable state of the engine and every expected model, to diagnose a blocked start.</summary>
-    public string Report(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
+    public string Report(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false)
     {
         var text = new System.Text.StringBuilder();
         text.AppendLine("Forja 50 · comprobación del modo visual");
@@ -35,9 +35,9 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
         text.AppendLine("Marca del motor: " + (File.Exists(Marker) ? "presente" : "falta") + " · " + Path.GetFileName(Marker));
         text.AppendLine("Python del motor: " + (File.Exists(paths.ComfyPython) ? "presente" : "falta") + " · " + paths.ComfyPython);
         text.AppendLine("main.py: " + (File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py")) ? "presente" : "falta"));
-        text.AppendLine("Opciones: asistente=" + assistant + " · modelo Full para editar=" + fullEdit + " · animación=" + animation);
+        text.AppendLine("Opciones: asistente=" + assistant + " · modelo Full para editar=" + fullEdit + " · asistente 12B=" + largeAssistant + " · animación=" + animation);
         text.AppendLine("Placa: " + (gpu is null ? "no detectada" : gpu.Name + " · " + gpu.FreeMiB + " MiB libres"));
-        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit))
+        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit, largeAssistant))
         {
             var file = VisualCatalog.PathFor(paths, model);
             var exists = File.Exists(file);
@@ -45,15 +45,15 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
             var state = !exists ? "FALTA" : actual == model.Asset.Bytes ? "correcto" : "tamaño distinto";
             text.AppendLine("- " + model.Asset.Name + ": " + state + " · " + actual + " de " + model.Asset.Bytes + " bytes · " + file);
         }
-        text.AppendLine("Puede iniciar: " + (IsPrepared(animation, gpu, assistant, fullEdit) ? "sí" : "no"));
+        text.AppendLine("Puede iniciar: " + (IsPrepared(animation, gpu, assistant, fullEdit, largeAssistant) ? "sí" : "no"));
         return text.ToString();
     }
 
-    public long RequiredFreeBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
+    public long RequiredFreeBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false)
     {
         long required = 2_000_000_000;
         if (!File.Exists(Marker)) required += 12_000_000_000 + VisualCatalog.Runtime.Bytes!.Value - VerifiedDownloader.PersistedBytes(VisualCatalog.Runtime, Path.Combine(paths.Downloads, VisualCatalog.Runtime.FileName));
-        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit))
+        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit, largeAssistant))
         {
             var destination = VisualCatalog.PathFor(paths, model);
             if (!File.Exists(destination) || new FileInfo(destination).Length != model.Asset.Bytes)
@@ -64,7 +64,7 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
     public async Task PrepareAsync(VisualSettings settings, IProgress<PreparationProgress>? progress, CancellationToken ct, GpuInfo? gpu = null)
     {
         if (!settings.HiDreamLicenseAccepted) throw new InvalidOperationException("Revisá y aceptá las licencias de HiDream y los componentes visuales antes de descargar.");
-        var required = RequiredFreeBytes(settings.IncludeAnimation, gpu, settings.EnhancePrompt, settings.FullEdit);
+        var required = RequiredFreeBytes(settings.IncludeAnimation, gpu, settings.EnhancePrompt, settings.FullEdit, settings.LargeAssistant);
         if (new DriveInfo(Path.GetPathRoot(paths.Root)!).AvailableFreeSpace < required) throw new IOException($"Necesitás aproximadamente {required / 1e9:0.0} GB libres para esta preparación visual.");
         if (!File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py")))
         {
@@ -85,7 +85,7 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
             }
             finally { if (Directory.Exists(staging)) DeleteStaging(staging); }
         }
-        foreach (var model in VisualCatalog.For(settings.IncludeAnimation, gpu, settings.EnhancePrompt, settings.FullEdit))
+        foreach (var model in VisualCatalog.For(settings.IncludeAnimation, gpu, settings.EnhancePrompt, settings.FullEdit, settings.LargeAssistant))
             await downloader.DownloadAsync(model.Asset, VisualCatalog.PathFor(paths, model), progress, ct);
         WriteConfiguration();
     }
@@ -111,10 +111,10 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
     }
-    public async Task VerifyModelsAsync(bool animation, CancellationToken ct, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false)
+    public async Task VerifyModelsAsync(bool animation, CancellationToken ct, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false)
     {
-        if (!IsPrepared(animation, gpu, assistant, fullEdit)) throw new InvalidOperationException("Prepará el modo visual antes de iniciar.");
-        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit))
+        if (!IsPrepared(animation, gpu, assistant, fullEdit, largeAssistant)) throw new InvalidOperationException("Prepará el modo visual antes de iniciar.");
+        foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit, largeAssistant))
             if (!await VerifiedDownloader.MatchesAsync(VisualCatalog.PathFor(paths, model), model.Asset, ct))
                 throw new InvalidDataException("Un modelo visual está incompleto o fue modificado. Prepará el modo para repararlo.");
     }

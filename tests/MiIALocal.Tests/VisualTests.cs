@@ -136,6 +136,20 @@ static class VisualTests
             assert(VisualCatalog.For(true, null, true, true).Contains(VisualCatalog.HiDreamFull), "Preparar con animaciones debe incluir el modelo Full de edición.");
             return Task.CompletedTask;
         });
+        await test("Asistente: el modelo grande se puede elegir y viaja al grafo", () =>
+        {
+            var prefix = new string('a', 32);
+            var small = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "frieren", 1024, 1024, 42, EnhancePrompt: true), prefix));
+            assert(small.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant.Asset.FileName, "El asistente por defecto no es el E4B.");
+            var large = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "frieren", 1024, 1024, 42, EnhancePrompt: true, LargeAssistant: true), prefix));
+            assert(large.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant12B.Asset.FileName, "El asistente grande no llega al grafo.");
+            var prepare = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Image, "frieren", 1024, 1024, 42, EnhancePrompt: true, LargeAssistant: true), null));
+            assert(prepare.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant12B.Asset.FileName, "La preparación del asistente grande usa el archivo chico.");
+            var profile = VisualCatalog.For(false, null, true, false, true);
+            assert(profile.Contains(VisualCatalog.PromptAssistant12B) && !profile.Contains(VisualCatalog.PromptAssistant), "El perfil no cambia de asistente.");
+            assert(VisualCatalog.DownloadBytes(false, null, true, true, true) > VisualCatalog.DownloadBytes(false, null, true, true, false), "El asistente grande no suma su descarga.");
+            return Task.CompletedTask;
+        });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
         {
             var card = new GpuInfo(0, "NVIDIA GeForce RTX 3090", 24576, 24576, "fixture");
@@ -261,7 +275,7 @@ static class VisualTests
         });
         await test("Visual: catálogo completo fijado, animación opcional y sin Qwen/OpenCode", () =>
         {
-            assert(VisualCatalog.Images.Length == 4 && VisualCatalog.For(true).Length == 5 && VisualCatalog.Legacy.Length == 2, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
+            assert(VisualCatalog.Images.Length == 5 && VisualCatalog.For(true).Length == 5 && VisualCatalog.Legacy.Length == 2, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
             assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 6, "El modelo Full para editar no se agrega al perfil.");
             foreach (var model in VisualCatalog.All)
             {

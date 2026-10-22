@@ -1,6 +1,13 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.13.
+22 de octubre de 2026 · desarrollo 0.4.14.
+
+## Asistente grande opcional · 0.4.14
+
+- Se puede elegir **Gemma 4 12B INT8 (11,2 GB)** como asistente descriptivo en lugar del E4B. Comfy documenta el 12B como «best quality, requires higher VRAM»; en comparativas generales gana al E4B en seguimiento de instrucciones (90,1 vs 51,9), conocimiento (GPQA 78,8 vs 58,6), contexto largo (MRCRv2 43,4 vs 25,4) y visión (MMMU-Pro 69,1 vs 52,6). El autor usa un 31B en su agente y la plantilla oficial de ComfyUI usa el E4B: el 12B queda como término medio elegible.
+- El **E4B sigue siendo el valor inicial** (el de la plantilla oficial). La opción implica 11,2 GB de descarga; el E4B se conserva. El archivo elegido viaja al grafo (`ForjaAssistantLoader`) y la preparación lo verifica, animación incluida.
+- El asistente corre solo y se libera antes de la difusión; el 12B es ~2–3× más lento por descripción y Google lo ubica para equipos de 16 GB de VRAM. Es la variante «Unified» (sin encoder): Comfy 0.42.1 tiene su ruta.
+- Pruebas: 94 del conjunto completo y la comprobación de ventana, sin modelos ni GPU. **Pendiente la prueba física** del 12B en las tres placas.
 
 ## Borrado selectivo de modelos anteriores · 0.4.13
 

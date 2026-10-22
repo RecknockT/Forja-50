@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.14: el asistente descriptivo se puede cambiar a Gemma 4 12B INT8 (11,2 GB, mejor calidad y ~2-3x mas lento) desde Modelos y descargas; el E4B sigue siendo el valor inicial y se conserva. El archivo elegido viaja al grafo y la preparacion lo verifica, animacion incluida. Sin modelos ni GPU en CI; validacion fisica pendiente.
+
             0.4.13: Administrar almacenamiento agrega una categoria propia para los modelos anteriores (FLUX.2 y Qwen3), con su espacio y su ruta, para borrarlos sin tocar el checkpoint de creacion, el asistente ni Wan. Sin modelos ni GPU en CI; validacion fisica pendiente.
 
             0.4.12: corrige un error por el cual, con la descarga de animaciones activada, Descargar y preparar excluia el checkpoint Full para editar mientras la comprobacion del modo imagenes lo exigia: el panel decia que faltaba, no se descargaba nada y no se podia iniciar. Ahora el Full forma parte del perfil de imagenes con animaciones incluidas. Sin modelos ni GPU en CI; validacion fisica pendiente.
