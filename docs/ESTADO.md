@@ -8,6 +8,13 @@
 - La preferencia se aplica solo al proceso de interfaz: no modifica el registro, los controladores, las descargas ni la ejecución CUDA de los motores. WebView2 conserva su configuración independiente.
 - La prueba de modos comprueba la preferencia en el proceso real. Las capturas internas comprueban el diseño; no sustituyen una comprobación de pantalla del usuario en las condiciones originales del fallo.
 
+## Descripción del asistente · sin publicar
+
+- El asistente recibía un envoltorio en inglés con el pedido pegado y un prompt de sistema en inglés que prohibía usar nombres propios: con «quiero generar una imagen de frieren de anime» devolvía una escena genérica. Se reescribieron las instrucciones en español (el idioma de la persona, como hace el autor de HiDream) exigiendo la salida en inglés, con reglas explícitas: descartar fórmulas de encargo, conservar textualmente cada nombre propio, título y texto entre comillas, conservar los rasgos del personaje nombrado, no agregar nombres no pedidos, mantener los estilos generales generales y escribir las exclusiones como ausencias. Hay tres prompts según la tarea: crear sin referencia, escena nueva con referencia y edición acotada.
+- El título de la referencia elegida (por ejemplo «Frieren (character)») ahora entra al asistente y no solo la imagen. Muestreo más fiel: temperatura 0,5, `top_p` 0,9 y `min_p` 0,02 (antes 0,7/0,95/0,05); se conservan 512 tokens y la semilla. La ventana de revisión permite corregir el texto antes de la difusión.
+- Pruebas de grafo: pedido textual, reglas de nombres e idioma, muestreo, título de la referencia y prompt de edición. Sin modelos ni GPU; pendiente la prueba física con el pedido real.
+- Límite conocido: el asistente es Gemma 4 E4B INT8; el agente oficial del autor usa Gemma 4 31B. El texto preparado sigue siendo editable antes de generar.
+
 ## Edición de HiDream con el programador del autor · sin publicar
 
 - Al editar (o al crear una escena nueva desde una imagen) HiDream recomienda su programador de edición para Dev, que corresponde a Euler de flujo sin la reinyección de ruido por paso del camino destilado. Forja lo aplica cuando hay una única imagen de referencia (`KSamplerSelect` con `euler`); crear sin referencia conserva `SamplerLCM`. Se mantienen 28 pasos, CFG 1, la escala de ruido inicial y la referencia en `HiDreamO1ReferenceImages`. Motivo: el muestreador destilado aplicado a una edición producía ruido.

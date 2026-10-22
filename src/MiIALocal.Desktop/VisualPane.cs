@@ -322,9 +322,9 @@ public sealed class VisualPane : UserControl
             if (kind != VisualTask.Animation && visual.EnhancePrompt && visual.ReviewPreparedPrompt)
             {
                 status("Preparando la descripción con el asistente visual…");
-                var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct);
+                var current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), ct, discovered);
                 var reviewed = PreparedPromptWindow.Show(Window.GetWindow(this), current.Text, request.Prompt, chosenReference is not null,
-                    async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token)).Text, ct);
+                    async token => (current = await runtime.PreparePromptAsync(request, chosenReference, new Progress<PreparationProgress>(p => progress(p)), token, discovered)).Text, ct);
                 if (reviewed is null) { status("Generación de imagen cancelada. Tu pedido sigue en el cuadro de texto."); return; }
                 prepared = current with { Text = reviewed };
             }

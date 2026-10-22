@@ -45,7 +45,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         catch { await StopWorkerAsync(); throw; }
         finally { gate.Release(); }
     }
-    public async Task<PreparedPrompt> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct)
+    public async Task<PreparedPrompt> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null)
     {
         await gate.WaitAsync(ct);
         try
@@ -57,7 +57,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             var input = StageReference(reference);
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            var text = await client.PreparePromptAsync(request, input, progress, ct);
+            var text = await client.PreparePromptAsync(request, input, progress, ct, true, null, onlineReference?.Title);
             return new(text, input, elapsed.Elapsed.TotalSeconds);
         }
         catch
@@ -84,7 +84,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             job = new() { Request = request, Reference = input, OnlineReference = onlineReference, Status = "Generando" }; store.Save(job);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(45));
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token, true, prepared?.Text);
+            job.Files = await client.GenerateAsync(request, job.Id, input, paths.VisualOutputs, progress, deadline.Token, true, prepared?.Text, onlineReference?.Title);
             job.PreparedPrompt = client.LastPreparedPrompt; job.TotalSeconds = elapsed.Elapsed.TotalSeconds + (prepared?.PreparationSeconds ?? 0);
             job.Status = "Completado"; store.Save(job); return job;
         }
@@ -139,10 +139,10 @@ public sealed class ComfyClient
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new IOException("El motor visual no responde. Detené y volvé a iniciar la IA; tus archivos se conservan.", ex); }
     }
     /// <summary>Run only the assistant stage so its caption can be reviewed before diffusion starts.</summary>
-    public async Task<string> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, TimeSpan? timeout = null)
+    public async Task<string> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, TimeSpan? timeout = null, string? referenceTitle = null)
     {
         LastPreparedPrompt = null;
-        var graph = VisualWorkflows.BuildPrepare(request, reference);
+        var graph = VisualWorkflows.BuildPrepare(request, reference, referenceTitle);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(timeout ?? TimeSpan.FromMinutes(5));
         JsonElement result;
         try { result = await RunAsync(graph, progress, deadline.Token, useSocket, "Preparando la descripción con el asistente en GPU"); }
@@ -152,10 +152,10 @@ public sealed class ComfyClient
         LastPreparedPrompt = text;
         return text;
     }
-    public async Task<string[]> GenerateAsync(VisualRequest request, string id, string? reference, string outputRoot, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, string? preparedPrompt = null)
+    public async Task<string[]> GenerateAsync(VisualRequest request, string id, string? reference, string outputRoot, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, string? preparedPrompt = null, string? referenceTitle = null)
     {
         LastPreparedPrompt = null;
-        var graph = VisualWorkflows.Build(request, id, reference, preparedPrompt);
+        var graph = VisualWorkflows.Build(request, id, reference, preparedPrompt, referenceTitle);
         var result = await RunAsync(graph, progress, ct, useSocket, "Generando; la primera carga puede tardar varios minutos");
         if (request.Task != VisualTask.Animation)
         {

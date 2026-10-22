@@ -61,6 +61,25 @@ static class VisualTests
             assert(create.GetProperty("9").GetProperty("class_type").GetString() == "SamplerLCM" && create.GetProperty("9").GetProperty("inputs").GetProperty("noise_clip_std").GetDouble() == 2.5, "La creación sin referencia pierde el muestreador destilado.");
             return Task.CompletedTask;
         });
+        await test("Asistente: entiende el pedido, conserva los nombres y usa muestreo fiel", () =>
+        {
+            var prefix = new string('a', 32);
+            var create = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "quiero generar una imagen de frieren de anime", 1024, 1024, 42, EnhancePrompt: true), prefix));
+            var assistant = create.GetProperty("31").GetProperty("inputs");
+            var createPrompt = assistant.GetProperty("system_prompt").GetString()!;
+            assert(assistant.GetProperty("prompt").GetString() == "quiero generar una imagen de frieren de anime", "El asistente no recibe el pedido textual.");
+            assert(createPrompt.Contains("nombre propio") && createPrompt.Contains("textualmente"), "El asistente no conserva los nombres escritos.");
+            assert(createPrompt.Contains("idioma"), "El asistente no entiende el pedido en su idioma.");
+            assert(createPrompt.Contains("de los 90"), "Se perdió la regla de estilos generales.");
+            assert(assistant.GetProperty("max_length").GetInt32() == 512 && assistant.GetProperty("sampling_mode.temperature").GetDouble() == 0.5
+                && assistant.GetProperty("sampling_mode.top_p").GetDouble() == 0.9 && assistant.GetProperty("sampling_mode.min_p").GetDouble() == 0.02, "El muestreo del asistente pierde fidelidad.");
+            var scene = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "la elfa volando de noche", 1024, 1024, 42, EnhancePrompt: true), prefix, "ref.png", null, "Frieren (character)"));
+            assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("referencia elegida"), "La escena con referencia no pide el título de la referencia.");
+            assert(scene.GetProperty("31").GetProperty("inputs").GetProperty("prompt").GetString()!.Contains("Frieren (character)"), "Se pierde el nombre de la referencia elegida.");
+            var prepared = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Edit, "cambiá el brazo a rojo", 1024, 1024, 42, EnhancePrompt: true), "ref.png"));
+            assert(prepared.GetProperty("31").GetProperty("inputs").GetProperty("system_prompt").GetString()!.Contains("permanecer igual"), "Editar no usa la instrucción de edición.");
+            return Task.CompletedTask;
+        });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
         {
             var card = new GpuInfo(0, "NVIDIA GeForce RTX 3090", 24576, 24576, "fixture");

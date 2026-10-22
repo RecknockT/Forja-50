@@ -2,7 +2,7 @@
 
 public static class VisualWorkflows
 {
-    public static Dictionary<string, object> Build(VisualRequest r, string prefix, string? reference = null, string? preparedPrompt = null)
+    public static Dictionary<string, object> Build(VisualRequest r, string prefix, string? reference = null, string? preparedPrompt = null, string? referenceTitle = null)
     {
         Validate(r, prefix, reference);
         if (preparedPrompt is not null && (string.IsNullOrWhiteSpace(preparedPrompt) || preparedPrompt.Length > 12000))
@@ -27,7 +27,7 @@ public static class VisualWorkflows
                 object prepared = instruction;
                 if (r.EnhancePrompt)
                 {
-                    AddAssistant(graph, instruction, reference is not null, r.Seed);
+                    AddAssistant(graph, AssistantInput(r, referenceTitle), SystemPrompt(r, reference is not null), reference is not null, r.Seed);
                     prepared = Link("31");
                 }
                 Node("32", "ForjaPreparedPrompt", ("text", prepared));
@@ -80,7 +80,7 @@ public static class VisualWorkflows
     }
 
     /// <summary>Assistant-only graph: the description is ready before any diffusion component loads.</summary>
-    public static Dictionary<string, object> BuildPrepare(VisualRequest r, string? reference)
+    public static Dictionary<string, object> BuildPrepare(VisualRequest r, string? reference, string? referenceTitle = null)
     {
         Validate(r, null, reference);
         if (r.Task == VisualTask.Animation) throw new InvalidDataException("La animación no usa el asistente de descripción.");
@@ -94,18 +94,18 @@ public static class VisualWorkflows
             Node("20", "LoadImage", ("image", reference));
             Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
         }
-        AddAssistant(graph, Instruction(r, reference is not null), reference is not null, r.Seed);
+        AddAssistant(graph, AssistantInput(r, referenceTitle), SystemPrompt(r, reference is not null), reference is not null, r.Seed);
         Node("32", "ForjaPreparedPrompt", ("text", Link("31")));
         return graph;
     }
 
-    private static void AddAssistant(Dictionary<string, object> graph, string instruction, bool hasReference, long seed)
+    private static void AddAssistant(Dictionary<string, object> graph, string instruction, string systemPrompt, bool hasReference, long seed)
     {
         void Node(string id, string type, params (string, object)[] inputs)
         { var values = inputs.ToDictionary(x => x.Item1, x => x.Item2); graph[id] = new { class_type = type, inputs = values }; }
         object[] Link(string id, int slot = 0) => [id, slot];
         Node("30", "ForjaAssistantLoader", ("clip_name", VisualCatalog.PromptAssistant.Asset.FileName));
-        var preparation = AddTextGenerate(graph, instruction, hasReference, seed);
+        var preparation = AddTextGenerate(graph, instruction, systemPrompt, seed);
         if (hasReference)
         {
             // The assistant only needs a bounded preview; keep the detailed
@@ -115,19 +115,31 @@ public static class VisualWorkflows
         }
     }
 
-    private static Dictionary<string, object> AddTextGenerate(Dictionary<string, object> graph, string instruction, bool hasReference, long seed)
+    private static Dictionary<string, object> AddTextGenerate(Dictionary<string, object> graph, string instruction, string systemPrompt, long seed)
     {
         object[] Link(string id, int slot = 0) => [id, slot];
         var preparation = new Dictionary<string, object>
         {
-            ["clip"] = Link("30"), ["prompt"] = instruction, ["system_prompt"] = hasReference ? VisualPrompts.Reference : VisualPrompts.Create,
-            ["max_length"] = 512, ["sampling_mode"] = "on", ["sampling_mode.temperature"] = 0.7, ["sampling_mode.top_k"] = 64, ["sampling_mode.top_p"] = 0.95,
-            ["sampling_mode.min_p"] = 0.05, ["sampling_mode.repetition_penalty"] = 1.05, ["sampling_mode.seed"] = seed, ["sampling_mode.presence_penalty"] = 0.0,
+            ["clip"] = Link("30"), ["prompt"] = instruction, ["system_prompt"] = systemPrompt,
+            ["max_length"] = 512, ["sampling_mode"] = "on", ["sampling_mode.temperature"] = 0.5, ["sampling_mode.top_k"] = 64, ["sampling_mode.top_p"] = 0.9,
+            ["sampling_mode.min_p"] = 0.02, ["sampling_mode.repetition_penalty"] = 1.05, ["sampling_mode.seed"] = seed, ["sampling_mode.presence_penalty"] = 0.0,
             ["thinking"] = false, ["use_default_template"] = true, ["mtp"] = "off"
         };
         graph["31"] = new { class_type = "TextGenerate", inputs = preparation };
         return preparation;
     }
+
+    // The assistant reads the person's request verbatim, in its own language. The English
+    // wrapper stays only in the fallback text HiDream receives when the assistant is off.
+    private static string AssistantInput(VisualRequest r, string? referenceTitle)
+    {
+        var title = referenceTitle?.Trim();
+        return string.IsNullOrEmpty(title) ? r.Prompt : "Referencia elegida: " + title + "\n" + r.Prompt;
+    }
+
+    private static string SystemPrompt(VisualRequest r, bool hasReference) => r.Task == VisualTask.Edit
+        ? VisualPrompts.Edit
+        : hasReference ? VisualPrompts.NewScene : VisualPrompts.Create;
 
     private static string Instruction(VisualRequest r, bool hasReference) => r.Task == VisualTask.Image && hasReference
         ? "Create a new scene featuring the subject from the reference image. Preserve their identity and characteristic appearance. Scene request: " + r.Prompt
