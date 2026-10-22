@@ -111,6 +111,9 @@ if "--real-fit" in sys.argv:
     assert fitted[0, 0, 0, 0] == 1 and fitted[0, -1, -1, 2] == 1
     assert torch.allclose(fitted[:, 0], fitted[:, 64])
     assert bridge.ForjaFitReference().fit(image, 1024, 1024)[0].shape == (1, 1024, 1024, 3)
+    limits = bridge.ForjaFitReference.INPUT_TYPES()["required"]
+    assert limits["width"][1]["max"] >= 3104 and limits["height"][1]["max"] >= 3104, "El nodo limita el lienzo entrenado de HiDream y Comfy rechaza el grafo"
+    assert bridge.ForjaFitReference().fit(image, 2560, 1440)[0].shape == (1, 1440, 2560, 3)
     assert not torch.cuda.is_initialized()
     print("PASS referencia real: marco completo y orientación sin recorte; CPU sin CUDA")
 

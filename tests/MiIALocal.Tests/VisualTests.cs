@@ -474,6 +474,15 @@ static class VisualTests
             assert(report.Contains("FALTA") && report.Contains("HiDream-O1 Full") && report.Contains("Puede iniciar: no"), "El informe no describe el estado real.");
             return Task.CompletedTask;
         });
+        await test("Visual: el rechazo del motor informa el nodo y el motivo", () =>
+        {
+            var body = "{\"error\":{\"type\":\"prompt_outputs_failed_validation\",\"message\":\"Prompt outputs failed validation\"},\"node_errors\":{\"21\":{\"errors\":[{\"type\":\"value_bigger_than_max\",\"message\":\"height: 2496 not in range [256, 2048]\"}]}}}";
+            var text = ComfyClient.DescribeRejection(body);
+            assert(text.Contains("nodo 21") && text.Contains("2496"), "El rechazo no informa el nodo y el valor: " + text);
+            assert(ComfyClient.DescribeRejection("{\"error\":{\"message\":\"x\"}}").Contains("x"), "Se perdió el mensaje del motor.");
+            assert(ComfyClient.DescribeRejection("no es json") == "", "Un cuerpo no válido no debe romper el mensaje.");
+            return Task.CompletedTask;
+        });
         await test("Visual: no aceptar salidas fuera de la carpeta o de otro trabajo", () =>
         {
             var output = Path.Combine(root, "visual-escape"); Directory.CreateDirectory(output); var id = new string('e', 32);

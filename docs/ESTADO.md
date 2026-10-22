@@ -1,6 +1,12 @@
 ﻿# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.14.
+22 de octubre de 2026 · desarrollo 0.4.15.
+
+## Nodo de referencia y rechazos explicados · 0.4.15
+
+- Bug corregido: el ajuste a resolución entrenada de 0.4.6 puede pedir lienzos con un lado de hasta 3104 (p. ej. un retrato 2:3 → 1664×2496, una panorámica 16:9 → 2560×1440), pero el nodo propio `ForjaFitReference` los limitaba a 2048. ComfyUI rechazaba el grafo completo («rechazó el flujo visual») y la app detenía la IA. El nodo ahora declara y valida hasta 3104.
+- Cuando el motor rechaza un flujo, el mensaje incluye el **nodo y el motivo** que informa ComfyUI (`node_errors`) en lugar del aviso genérico.
+- Pruebas: 95 del conjunto completo y la comprobación de ventana; la comprobación del puente Python exige el límite ≥3104 y comprueba el ajuste a 2560×1440 (se ejecuta en CI).
 
 ## Asistente grande opcional · 0.4.14
 

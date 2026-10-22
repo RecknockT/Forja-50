@@ -190,7 +190,8 @@ public sealed class ComfyClient
             using var submit = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "prompt")) { Content = JsonContent.Create(new { prompt = graph, client_id = clientId }) };
             submit.Headers.Authorization = new("Bearer", token);
             using var response = await http.SendAsync(submit, ct);
-            if (!response.IsSuccessStatusCode) throw new InvalidDataException("ComfyUI rechazó el flujo visual. Revisá Diagnóstico; no se generó un resultado.");
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidDataException("ComfyUI rechazó el flujo visual" + DescribeRejection(await response.Content.ReadAsStringAsync(ct)) + ". Revisá Diagnóstico; no se generó un resultado.");
             using var accepted = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var promptId = accepted.RootElement.GetProperty("prompt_id").GetString()!;
             if (!Guid.TryParse(promptId, out _)) throw new InvalidDataException("Identificador del motor inválido.");
@@ -215,6 +216,29 @@ public sealed class ComfyClient
         if (!result.TryGetProperty("outputs", out var outputs) || !outputs.TryGetProperty("32", out var prepared)
             || !prepared.TryGetProperty("text", out var texts) || texts.ValueKind != JsonValueKind.Array || texts.GetArrayLength() == 0 || texts[0].ValueKind != JsonValueKind.String) return null;
         var text = texts[0].GetString()?.Trim(); return text?.Length is > 0 and <= 12000 ? text : null;
+    }
+    /// <summary>Reason ComfyUI rejected a prompt: the node and the offending input, when it reports them.</summary>
+    public static string DescribeRejection(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var parts = new List<string>();
+            if (root.TryGetProperty("error", out var error))
+                foreach (var name in new[] { "type", "message" })
+                    if (error.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())) parts.Add(value.GetString()!.Trim());
+            if (root.TryGetProperty("node_errors", out var nodes) && nodes.ValueKind == JsonValueKind.Object)
+                foreach (var node in nodes.EnumerateObject())
+                    if (node.Value.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+                        foreach (var item in errors.EnumerateArray())
+                            if (item.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(message.GetString()))
+                                parts.Add("nodo " + node.Name + ": " + message.GetString()!.Trim());
+            var text = string.Join(": ", parts.Distinct());
+            if (text.Length > 300) text = text[..300] + "…";
+            return text.Length == 0 ? "" : " · " + text;
+        }
+        catch (JsonException) { return ""; }
     }
     public static string DescribeFailure(JsonElement status)
     {
