@@ -45,6 +45,18 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         catch { await StopWorkerAsync(); throw; }
         finally { gate.Release(); }
     }
+    public async Task<string> AnalyzeReferenceAsync(ReferenceAnalysis task, string input, long seed, IProgress<PreparationProgress>? progress, CancellationToken ct)
+    {
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (!IsReady || client is null || !promptAssistant) throw new InvalidOperationException("Iniciá la IA con Gemma activado para buscar referencias con el asistente.");
+            return await client.AnalyzeReferenceAsync(task, input, seed, progress, ct);
+        }
+        catch (OperationCanceledException) { await StopWorkerAsync(); throw; }
+        catch (Exception ex) { await StopWorkerAsync(); throw new InvalidOperationException("Gemma no pudo analizar la referencia. Revisá Diagnóstico y volvé a iniciar la IA. " + ex.Message, ex); }
+        finally { gate.Release(); }
+    }
     public async Task<PreparedPrompt> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, VisualReference? onlineReference = null, string? contextTitle = null)
     {
         await gate.WaitAsync(ct);
@@ -136,6 +148,17 @@ public sealed class ComfyClient
             return JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new IOException("El motor visual no responde. Detené y volvé a iniciar la IA; tus archivos se conservan.", ex); }
+    }
+    public async Task<string> AnalyzeReferenceAsync(ReferenceAnalysis task, string input, long seed, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true)
+    {
+        LastPreparedPrompt = null;
+        var graph = VisualWorkflows.BuildReferenceAnalysis(task, input, seed);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(5));
+        JsonElement result;
+        try { result = await RunAsync(graph, progress, deadline.Token, useSocket, task == ReferenceAnalysis.Plan ? "Gemma está identificando qué referencia buscar" : "Gemma está comparando los resultados de Wikipedia"); }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new IOException("Gemma agotó el tiempo de análisis de referencias.", ex); }
+        // Structured planning JSON must never receive caption post-processing or become the final prompt.
+        return ReadPreparedPrompt(result) ?? throw new IOException("Gemma no devolvió un análisis de referencia.");
     }
     /// <summary>Run only the assistant stage so its caption can be reviewed before diffusion starts.</summary>
     public async Task<string> PreparePromptAsync(VisualRequest request, string? reference, IProgress<PreparationProgress>? progress, CancellationToken ct, bool useSocket = true, TimeSpan? timeout = null, string? referenceTitle = null)

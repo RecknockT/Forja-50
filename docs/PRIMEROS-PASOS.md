@@ -81,3 +81,9 @@ El asistente visual se carga en la GPU seleccionada aun con ahorro de memoria. S
 Podés cerrar Administrar almacenamiento mientras calcula el espacio; eso cancela el cálculo y conserva los datos. Durante una eliminación confirmada, esperá a que termine. La desinstalación silenciosa conserva datos por diseño.
 
 En Administrar almacenamiento, los modelos de programación y los de imágenes/animación aparecen en apartados separados. Cada modelo tiene una casilla propia: borrar uno no selecciona los demás. La confirmación enumera exactamente los elementos elegidos.
+
+### Referencias con Gemma
+
+En Crear imagen, activá el asistente y Buscar referencias en Wikipedia con Gemma. Escribí el pedido con naturalidad: por ejemplo «un bosque de noche con Frieren dibujada como anime de los 90». Gemma identifica el personaje y propone la consulta; Forja busca en Wikipedia, Gemma ordena las candidatas por título/dimensiones y después elegís la imagen. El estilo se conserva para generar; no se busca una serie concreta por pedir una estética general.
+
+Podés forzar el nombre en Opciones de la referencia, elegir una imagen de tu PC o crear sin referencia. Editar y animar conservan la imagen elegida. La búsqueda agrega análisis local y requiere internet para Wikipedia; no da a Gemma navegación general ni envía imágenes locales. Si desactivás el asistente, la búsqueda vuelve a la detección simple de nombres.

@@ -7,6 +7,65 @@ static class VisualTests
 {
     public static async Task RunAsync(string root, Action<bool, string> assert, Func<string, Func<Task>, Task> test)
     {
+        await test("Referencias: personaje y estilo de los 90 se tratan por separado", () =>
+        {
+            const string request = "generame a frieren como si fuera anime de los 90s";
+            var plan = JsonSerializer.SerializeToElement(VisualWorkflows.BuildReferenceAnalysis(ReferenceAnalysis.Plan, request, 42));
+            assert(plan.GetProperty("31").GetProperty("inputs").GetProperty("prompt").GetString() == request
+                && VisualReferenceReasoning.PlanInstruction.Contains("busca Frieren, no un anime"), "La búsqueda confunde el estilo con el personaje.");
+            var generation = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, request, 2048, 2048, 42, EnhancePrompt: true), new string('a', 32), "frieren.png", referenceTitle: "Frieren (character)"));
+            var assistant = generation.GetProperty("31").GetProperty("inputs");
+            assert(assistant.GetProperty("prompt").GetString()!.Contains(request)
+                && assistant.GetProperty("system_prompt").GetString()!.Contains("prioridad sobre el estilo de la referencia"), "Se pierde el estilo después de elegir la referencia.");
+            return Task.CompletedTask;
+        });
+        await test("Referencias Gemma: planes acotados, estilos generales y selección existente", () =>
+        {
+            var plan = VisualReferenceReasoning.ParsePlan("{\"search\":true,\"subject\":\"Frieren\",\"query\":\"Frieren (character)\"}");
+            assert(plan.Subject == "Frieren" && plan.Query == "Frieren (character)", "Se pierde el nombre o la consulta de Gemma.");
+            assert(VisualReferenceReasoning.ParsePlan("{\"search\":false}").Query is null, "Un estilo general fuerza una búsqueda.");
+            assert(VisualReferenceReasoning.ParsePlan("```json\n{\"search\":false}\n```").Subject is null, "No se acepta el JSON delimitado del asistente.");
+            void Reject(Action action) { try { action(); } catch (InvalidDataException) { return; } throw new Exception("Se aceptó una salida de referencia inválida."); }
+            Reject(() => VisualReferenceReasoning.ParsePlan("{\"search\":true,\"subject\":\"Frieren\",\"query\":\"https://evil.test/a\"}"));
+            Reject(() => VisualReferenceReasoning.ParsePlan("{\"search\":\"true\"}"));
+            Reject(() => VisualReferenceReasoning.ParseRank("{\"preferredIndex\":9}", 2));
+            Reject(() => VisualReferenceReasoning.ParseRank("{\"preferredIndex\":\"0\"}", 2));
+            assert(VisualReferenceReasoning.ParseRank("{\"preferredIndex\":1}", 2) == 1
+                && VisualReferenceReasoning.ParseRank("{\"preferredIndex\":null}", 2) is null, "Se pierde una recomendación o la incertidumbre.");
+            var choices = new[] { new VisualReference("Frieren (character)", "https://en.wikipedia.org/wiki/Frieren_(character)", "https://upload.wikimedia.org/x.png", "Frieren", 512, 768) };
+            var payload = VisualReferenceReasoning.RankingInput("Una escena con Frieren al fondo", "Frieren", choices);
+            assert(payload.Contains("Frieren (character)") && !payload.Contains("https://"), "Se omiten títulos o se delegan enlaces al modelo.");
+            return Task.CompletedTask;
+        });
+        await test("Referencias Gemma: planificación local sin difusión y JSON sin posprocesar", async () =>
+        {
+            foreach (var task in new[] { ReferenceAnalysis.Plan, ReferenceAnalysis.Rank })
+            {
+                var graph = VisualWorkflows.BuildReferenceAnalysis(task, "Un paisaje con Frieren al fondo", 42);
+                var doc = JsonSerializer.SerializeToElement(graph);
+                assert(graph.Count == 3 && !doc.TryGetProperty("1", out _) && !doc.TryGetProperty("20", out _), "El análisis carga difusión o imágenes sin pedirlo.");
+                assert(doc.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant12B.Asset.FileName, "El análisis no reutiliza Gemma 12B.");
+                assert(doc.GetProperty("31").GetProperty("inputs").GetProperty("max_length").GetInt32() == 512, "La planificación no está acotada.");
+            }
+            var expected = "{\"search\":true,\"subject\":\"Frieren\",\"query\":\"Frieren (character)\"}";
+            var promptId = Guid.NewGuid().ToString(); var submitted = false;
+            var nodes = new[] { "ForjaAssistantLoader", "TextGenerate", "ForjaPreparedPrompt" }.ToDictionary(x => x, _ => new { });
+            using var http = new HttpClient(new AsyncHandler(async (message, _) =>
+            {
+                assert(message.RequestUri!.Host == "127.0.0.1" && message.Headers.Authorization?.Parameter == "fixture", "El análisis sale del motor local o pierde autenticación.");
+                if (message.RequestUri.AbsolutePath == "/object_info") return Json(nodes);
+                if (message.RequestUri.AbsolutePath == "/prompt")
+                {
+                    using var body = JsonDocument.Parse(await message.Content!.ReadAsStringAsync());
+                    assert(body.RootElement.GetProperty("prompt").GetProperty("31").GetProperty("inputs").GetProperty("prompt").GetString() == "Un paisaje con Frieren al fondo", "Gemma no recibe el pedido completo.");
+                    submitted = true; return Json(new { prompt_id = promptId });
+                }
+                return Json(new Dictionary<string, object> { [promptId] = new { status = new { completed = true, status_str = "success" }, outputs = new Dictionary<string, object> { ["32"] = new { text = new[] { expected } } } } });
+            }));
+            var client = new ComfyClient(http, new("http://127.0.0.1:12345/"), "fixture");
+            var text = await client.AnalyzeReferenceAsync(ReferenceAnalysis.Plan, "Un paisaje con Frieren al fondo", 42, null, default, false);
+            assert(submitted && text == expected && client.LastPreparedPrompt is null, "El JSON se transforma en descripción o se contamina con nombres antepuestos.");
+        });
         await test("Animación: proporciones automáticas y más detalle sin aumentar pasos", () =>
         {
             assert(VisualAnimation.ForReference(2048, 1536) == (640, 480), "La referencia 4:3 no conserva su encuadre estándar.");

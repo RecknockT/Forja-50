@@ -17,7 +17,7 @@ public sealed class VisualReferenceSearch : IDisposable
     {
         http = new(handler ?? new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = DecompressionMethods.All });
         http.Timeout = TimeSpan.FromSeconds(25);
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("Forja50/0.3 (https://github.com/RecknockT/Forja-50)");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Forja50/" + ReleaseProfile.Version + " (https://github.com/RecknockT/Forja-50)");
     }
 
     private static readonly HashSet<string> Leading = new("generar genera generá generate crear crea creá create dibujar dibuja dibujá draw hacer hace hacé haz quiero una un an imagen image foto picture of de del a por favor please me dame mostrame mostrar render".Split(' '), StringComparer.OrdinalIgnoreCase);

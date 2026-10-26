@@ -6,7 +6,7 @@
   #define SetupOutput "..\artifacts"
 #endif
 #ifndef AppVersionText
-  #define AppVersionText "0.4.21-dev"
+  #define AppVersionText "0.4.22-dev"
 #endif
 [Setup]
 AppId={{9AD610A8-C95C-460B-B5BD-2F45CC736DC0}

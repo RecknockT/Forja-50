@@ -34,7 +34,7 @@ public sealed class VisualPane : UserControl
     private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
     private readonly Button importModels = new() { Content = "Usar modelos ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
     private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Prueba rápida · 1024 píxeles (menos fiel)", "Equilibrada · 1536 píxeles", "Recomendada · 2048 píxeles" }, SelectedIndex = 2 };
-    private readonly CheckBox webReferences = new() { Content = "Buscar personajes reconocibles en Wikipedia" };
+    private readonly CheckBox webReferences = new() { Content = "Buscar referencias en Wikipedia con Gemma" };
     private readonly TextBlock animationHint = new() { Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10), Visibility = Visibility.Collapsed };
     private readonly TextBox webSubject = new() { MaxLength = 100, ToolTip = "Opcional: escribí solo el personaje u objeto, por ejemplo Frieren. Vacío: se intenta detectar en tu descripción." };
     private readonly TextBlock webStatus = new() { Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 8) };
@@ -153,7 +153,7 @@ public sealed class VisualPane : UserControl
         editor.Children.Add(webReferences);
         var webOptions = new StackPanel();
         webOptions.Children.Add(new TextBlock { Text = "Personaje u objeto (opcional; vacío = detectar en tu descripción)", FontSize = 12, Margin = new(0, 10, 0, 6) }); webOptions.Children.Add(webSubject);
-        webOptions.Children.Add(new TextBlock { Text = "Antes de generar podés revisar la imagen encontrada y reemplazarla por una de tu PC. Se envía solo el nombre a Wikipedia. La búsqueda no analiza caras ni garantiza la identidad. Los estilos generales, como anime de los 90, se describen directamente al modelo. Editar y animar usan la imagen elegida.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
+        webOptions.Children.Add(new TextBlock { Text = "Gemma interpreta tu pedido y propone qué buscar; Forja consulta Wikipedia y Gemma ordena las candidatas por sus títulos y dimensiones. Después revisás la imagen. Solo se envía la consulta a Wikipedia, no el pedido completo ni imágenes de tu PC. Si desactivás Gemma se usa detección simple. Editar y animar conservan la imagen elegida.", FontSize = 11, Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10) });
         onlineOptions.Content = webOptions; editor.Children.Add(onlineOptions);
         editor.Children.Add(webStatus); editor.Children.Add(webSource);
         webReferences.Click += (_, _) => { settings().Visual.WebReferencesEnabled = webReferences.IsChecked == true; Save(); Refresh(); };
@@ -270,6 +270,7 @@ public sealed class VisualPane : UserControl
         imageQuality.IsEnabled = available && task.SelectedIndex != 2; imageQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
         seed.IsEnabled = available; animationMode.IsEnabled = available && gpu()?.IsRtx3090 != true; animationMode.Visibility = task.SelectedIndex == 2 && gpu()?.IsRtx3090 != true ? Visibility.Visible : Visibility.Collapsed;
+        webReferences.Content = settings().Visual.EnhancePrompt ? "Buscar referencias en Wikipedia con Gemma" : "Buscar referencias en Wikipedia";
         webReferences.IsEnabled = available && task.SelectedIndex == 0;
         webReferences.Visibility = onlineOptions.Visibility = task.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         webSubject.IsEnabled = available && task.SelectedIndex == 0 && webReferences.IsChecked == true;
@@ -351,6 +352,18 @@ public sealed class VisualPane : UserControl
             {
                 var explicitSearch = !string.IsNullOrWhiteSpace(webSubject.Text);
                 var subject = explicitSearch ? webSubject.Text.Trim() : VisualReferenceSearch.AutomaticSubject(request.Prompt);
+                var query = subject;
+                if (!explicitSearch && visual.EnhancePrompt)
+                {
+                    status("Gemma está identificando qué referencia buscar…");
+                    var analysis = await runtime.AnalyzeReferenceAsync(ReferenceAnalysis.Plan, request.Prompt, chosenSeed, new Progress<PreparationProgress>(progress), ct);
+                    try
+                    {
+                        var plan = VisualReferenceReasoning.ParsePlan(analysis);
+                        subject = plan.Subject; query = plan.Query;
+                    }
+                    catch (InvalidDataException) { webStatus.Text = "Gemma no devolvió una consulta válida. Se intenta detectar el nombre; podés indicarlo en Opciones de la referencia."; }
+                }
                 if (subject is null) { ShowOnlineSource(null); webStatus.Text = "Concepto o estilo general: se usa tu descripción, sin elegir una obra concreta."; }
                 else
                 {
@@ -358,12 +371,24 @@ public sealed class VisualPane : UserControl
                 try
                 {
                     using var search = new VisualReferenceSearch();
-                    var choices = await search.SearchAsync(subject, ct);
+                    var choices = await search.SearchAsync(query ?? subject, ct);
                     var matched = VisualReferenceSearch.AutomaticMatch(choices, subject);
-                    if (matched is null && !explicitSearch) webStatus.Text = "Sin una coincidencia clara: se generará tu idea sin imponer una referencia. Podés elegir una imagen de tu PC.";
-                    else
-                    {
                     var ordered = matched is null ? choices : choices.OrderByDescending(item => item == matched).ToArray();
+                    if (visual.EnhancePrompt && choices.Length > 1)
+                    {
+                        status("Gemma está comparando las referencias de Wikipedia…");
+                        var analysis = await runtime.AnalyzeReferenceAsync(ReferenceAnalysis.Rank,
+                            VisualReferenceReasoning.RankingInput(request.Prompt, subject, choices), chosenSeed, new Progress<PreparationProgress>(progress), ct);
+                        try
+                        {
+                            if (VisualReferenceReasoning.ParseRank(analysis, choices.Length) is { } preferred)
+                                ordered = choices.OrderByDescending(item => item == choices[preferred]).ToArray();
+                        }
+                        catch (InvalidDataException) { webStatus.Text = "Sin una recomendación clara de Gemma: elegí la referencia que corresponda."; }
+                    }
+                    // Always offer review for a recognized subject, even without an exact title match.
+                    // An empty list still lets the person select a local image or continue without one.
+                    {
                     var selection = VisualReferencePicker.Show(Window.GetWindow(this), ordered, search, paths.VisualInputs, ct);
                     ct.ThrowIfCancellationRequested();
                     if (selection is null) { status("Generación cancelada antes de usar la GPU."); return; }

@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.22: Gemma planifica la consulta de referencia desde el pedido completo y ordena candidatas de Wikipedia por titulo/dimensiones antes de la revision del usuario. Personaje y estilo se conservan por separado. No requiere otro modelo; pruebas de integracion sin inferencia fisica.
+
             0.4.21: corrige franjas laterales en animacion eliminando relleno de bordes replicados. Formato automatico segun referencia, resolucion visible y opcion Mas detalle experimental. Pruebas de ajuste real en CPU; sin medicion nueva de inferencia/VRAM.
 
             0.4.20: preparacion visual simplificada con tres modelos seleccionados de inicio, consentimiento explicito, boton de preparacion destacado y panel replegado cuando todo lo elegido esta listo. Iniciar IA se destaca solo con perfil preparado y memoria suficiente. Sin inferencia en CI.

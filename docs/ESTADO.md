@@ -1,6 +1,15 @@
 # Estado verificable de Forja 50
 
-26 de octubre de 2026 · desarrollo 0.4.21.
+26 de octubre de 2026 · desarrollo 0.4.22.
+
+## Gemma planifica las referencias · 0.4.22
+
+- Con Gemma y la búsqueda activados, el pedido completo pasa por una etapa local de planificación: identifica el sujeto y genera una consulta breve para Wikipedia. No requiere escribir el nombre al principio. Un nombre escrito manualmente en Opciones evita esta primera etapa.
+- Forja consulta exclusivamente Wikipedia con esa consulta (no envía el pedido completo ni imágenes locales). Gemma compara los títulos y dimensiones de las candidatas, sin afirmar haber visto sus imágenes, y recomienda un índice válido. La persona revisa las imágenes en el selector antes de elegir. La descripción posterior analiza la referencia elegida.
+- Ya no se omite el selector por no encontrar un título exactamente igual. Una búsqueda sin coincidencias también permite elegir una referencia local o continuar sin referencia.
+- Personaje y estilo se separan: «Frieren como anime de los 90» busca al personaje y conserva el estilo en el pedido de generación. Un estilo general solo no obliga a elegir una obra. El estilo pedido tiene prioridad sobre el de la referencia.
+- Salidas estructuradas acotadas y validadas: el modelo no controla URLs, archivos ni comandos, y no puede elegir un índice fuera de las candidatas. Una respuesta de formato inválido usa detección simple/revisión manual; con el asistente desactivado se mantiene el comportamiento anterior. Si el motor falla, se informa y se detiene su proceso.
+- Pruebas: parser, consultas y rankings inválidos, planificación sin difusión, protocolo HTTP local autenticado, conservación del JSON separado de la descripción final y separación personaje/estilo. No se hizo inferencia física ni se descargaron modelos para esta revisión; la calidad de las decisiones de Gemma requiere prueba de uso.
 
 ## Animación sin franjas de relleno · 0.4.21
 
