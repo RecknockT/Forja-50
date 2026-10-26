@@ -33,7 +33,7 @@ public partial class MainWindow : Window
     private bool busy, closing, exiting, browserReady, synchronizingProfile = true, populatingContext, populatingMode;
     public MainWindow(AppPaths paths)
     {
-        InitializeComponent(); NativeWindowTheme.Attach(this); this.paths = paths; settings = paths.LoadSettings();
+        InitializeComponent(); System.Windows.Controls.ToolTipService.SetShowOnDisabled(StartButton, true); NativeWindowTheme.Attach(this); this.paths = paths; settings = paths.LoadSettings();
         provisioner = new(paths, new VerifiedDownloader(http)); runtime = new(paths, http);
         visualPane = new(paths, () => settings, http, () => hardware?.SelectedGpu, RunOperationAsync,
             message => StatusLabel.Text = message, () => UpdateConfigurationSummary(), p =>
@@ -307,6 +307,8 @@ public partial class MainWindow : Window
             VramUsage.Text = $"En uso: {sample.UsedMiB / 1024d:0.0} GiB · Libre: {sample.FreeMiB / 1024d:0.0} GiB";
             VramBar.Value = sample.UsedPercent; VramBar.Visibility = Visibility.Visible;
             VramTotal.Text = $"Total: {sample.TotalMiB / 1024d:0.0} GiB · incluye todas las aplicaciones";
+            if (hardware is not null) hardware = hardware with { Gpus = hardware.Gpus.Select(item => item.Index == gpu.Index ? item with { FreeMiB = sample.FreeMiB } : item).ToArray() };
+            RefreshControls();
         }
         catch (OperationCanceledException) when (closing || memoryLifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is IOException or OperationCanceledException)
@@ -317,9 +319,14 @@ public partial class MainWindow : Window
     {
         var compatible = hardware?.Problem is null && hardware?.SelectedGpu is not null && Environment.OSVersion.Version.Build >= 22000;
         var available = !busy && !closing;
-        StartButton.IsEnabled = available && compatible && provisioner.IsPrepared(settings) && Directory.Exists(settings.LastProject);
+        StartButton.IsEnabled = available && compatible && provisioner.IsPrepared(settings) && Directory.Exists(settings.LastProject)
+            && (runtime.State == RuntimeState.Ready || settings.LicenseAccepted && hardware!.SelectedGpu!.FreeMiB >= GpuProfiles.MinimumFreeMiB(settings, hardware.SelectedGpu));
+        StartButton.ToolTip = !compatible ? "No se detectó un equipo compatible." : !provisioner.IsPrepared(settings) ? "Prepará los modelos y herramientas de programación."
+            : !Directory.Exists(settings.LastProject) ? "Elegí la carpeta de tu proyecto."
+            : runtime.State != RuntimeState.Ready && !settings.LicenseAccepted ? "Revisá y aceptá las licencias antes de iniciar."
+            : runtime.State != RuntimeState.Ready && hardware!.SelectedGpu!.FreeMiB < GpuProfiles.MinimumFreeMiB(settings, hardware.SelectedGpu) ? "Liberá memoria de GPU para iniciar con el perfil elegido." : null;
         StartButton.Content = runtime.State == RuntimeState.Ready ? "Abrir proyecto" : "Iniciar IA";
-        StopButton.IsEnabled = available && runtime.State != RuntimeState.Stopped;
+        StopButton.IsEnabled = available && (runtime.State is not (RuntimeState.Stopped or RuntimeState.Error) || visualPane.IsActive);
         PrepareButton.IsEnabled = available && compatible && runtime.State != RuntimeState.Ready;
         PrepareButton.Content = preparationPaused || VerifiedDownloader.HasPartial(ReleaseProfile.ModelFor(settings.EngineMode), paths.ActiveModelPath(settings)) ? "Reanudar preparación" : "Preparar IA";
         ProjectButton.IsEnabled = available;
@@ -342,12 +349,14 @@ public partial class MainWindow : Window
         visualPane.SetAvailable(available, compatible);
         if (visual)
         {
-            StartButton.IsEnabled = available && compatible && !visualPane.IsReady;
+            StartButton.IsEnabled = available && compatible && !visualPane.IsReady && visualPane.StartProblem.Length == 0;
             StartButton.ToolTip = visualPane.StartProblem is { Length: > 0 } reason ? reason : null;
             StartButton.Content = visualPane.IsReady ? "IA iniciada" : "Iniciar IA";
-            StopButton.IsEnabled = available && visualPane.IsActive;
+            StopButton.IsEnabled = available && (visualPane.IsActive || runtime.State is not (RuntimeState.Stopped or RuntimeState.Error));
             ContextChoice.IsEnabled = AdvancedButton.IsEnabled = GitHubButton.IsEnabled = false;
         }
+        StartButton.Background = new SolidColorBrush(StartButton.IsEnabled ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67));
+        StartButton.Foreground = Brushes.White;
         StorageButton.IsEnabled = available && bothStopped;
     }
     private void SmokeVisualModes(string report)
@@ -361,6 +370,7 @@ public partial class MainWindow : Window
             WorkspaceChoice.SelectedIndex = 1; RefreshControls();
             if (settings.Mode != AppMode.Visual || VisualContainer.Visibility != Visibility.Visible || WelcomePane.Visibility == Visibility.Visible || ProjectArea.Visibility != Visibility.Collapsed
                 || GitHubButton.Visibility != Visibility.Collapsed || StartButton.Visibility != Visibility.Visible || visualPane.StartProblem.Length == 0 || !ConfigurationSummary.Text.Contains("HiDream")) throw new Exception("No se aisló el espacio visual con inicio visible y una explicación de lo que falta.");
+            if (StartButton.IsEnabled || ((SolidColorBrush)StartButton.Background).Color != Color.FromRgb(38, 55, 67)) throw new Exception("Iniciar IA se destaca o habilita con modelos pendientes.");
             busy = true; RefreshControls();
             if (CancelButton.Visibility != Visibility.Visible || WelcomePane.IsAncestorOf(CancelButton) || !Equals(CancelButton.Content, "Cancelar")) throw new Exception("La cancelación no es accesible desde el encabezado visual.");
             busy = false; RefreshControls();

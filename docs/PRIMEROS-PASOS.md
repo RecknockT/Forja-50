@@ -41,7 +41,7 @@ Si la descarga actual está trabada, pulsá Cancelar o Pausar y esperá a que se
 
 ## Imágenes y animación (0.4.0 experimental)
 
-Elegí **Imágenes y animación** en Modo de uso. No hace falta elegir un proyecto ni instalar Qwen de programación, OpenCode o Git. Desde 0.4.19 hay un único generador: **HiDream-O1 Full FP8 escalado** (8,07 GB), compartido por Crear imagen y Editar imagen en las tres placas. Revisá las licencias y pulsá Descargar y preparar. La descarga es directa, sin cuenta ni token de Hugging Face.
+Elegí **Imágenes y animación** en Modo de uso. No hace falta elegir un proyecto ni instalar Qwen de programación, OpenCode o Git. Desde 0.4.19 hay un único generador: **HiDream-O1 Full FP8 escalado** (8,07 GB), compartido por Crear imagen y Editar imagen en las tres placas. HiDream, Gemma y Wan vienen marcados por defecto. Revisá las licencias y marcá Revisé y acepto: Descargar y preparar se habilitará en verde. Cuando termine todo lo seleccionado, la sección se replegará y podrás usar Iniciar IA, que también se destaca cuando el equipo y el perfil están listos. La descarga es directa, sin cuenta ni token de Hugging Face.
 
 El único asistente visual es **Gemma 4 12B INT8** (12,06 GB). Podés desactivarlo y escribir directamente la descripción, preferentemente en inglés. Cuando está activado, analiza el pedido y la referencia antes de liberar la GPU para HiDream. Con **Revisar y editar la descripción preparada** podés corregir el texto, pedir otra versión, volver al original o cancelar. La generación usa el texto que confirmaste; el asistente no se ejecuta otra vez.
 

@@ -26,9 +26,10 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox duration = new() { ItemsSource = new[] { "3 segundos", "5 segundos" }, SelectedIndex = 0 };
     private readonly TextBox seed = new() { MinWidth = 180, MaxLength = 16 };
     private readonly ComboBox animationMode = new() { ItemsSource = new[] { "Rápido · NVFP4 + Sol (experimental)", "Normal · NVFP4" }, SelectedIndex = 0 };
-    private readonly CheckBox animation = new() { Content = "Descargar Wan 14B NVFP4 para animaciones y GIF (perfil automático por GPU)" };
+    private readonly CheckBox imageModel = new() { Content = "HiDream-O1 Full · crear y editar imágenes (principal · 8,1 GB)", IsChecked = true, IsEnabled = false, ToolTip = "Es el generador principal del modo visual y siempre está seleccionado." };
+    private readonly CheckBox animation = new() { Content = "Wan 14B · animaciones y GIF (perfil automático por GPU)" };
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
-    private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un Gemma 4 12B (asistente visual · 12,1 GB)" };
+    private readonly CheckBox enhancePrompt = new() { Content = "Gemma 4 12B · asistente visual (12,1 GB)" };
     private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
     private readonly Button importModels = new() { Content = "Usar modelos ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
     private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Prueba rápida · 1024 píxeles (menos fiel)", "Equilibrada · 1536 píxeles", "Recomendada · 2048 píxeles" }, SelectedIndex = 2 };
@@ -70,11 +71,12 @@ public sealed class VisualPane : UserControl
     private (int Width, int Height)? referencePixels;
     private string? referenceSubject;
     private string? resultFile;
-    private bool available, compatible, preparing, generating, loading, wasPrepared, animationFormats;
+    private bool available, compatible, preparing, generating, loading, wasSelectedPrepared, animationFormats;
     public bool IsReady => runtime.IsReady;
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
     public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant);
+    private bool AllSelectedPrepared => provisioner.IsPrepared(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt);
     public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nCrear y editar: HiDream-O1 Full · FP8\n40 pasos · CFG 5 · DPM++ 2M SDE\nSuavizado de costuras activado\nGemma 4 12B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? gpu()?.IsRtx3090 == true ? "Wan 2.2 A14B · GGUF Q4_K_S · LightX2V · 4 pasos\n" : $"Wan 2.2 A14B · NVFP4 · 4 pasos · {(settings().Visual.AnimationSol ? "Sol experimental" : "Normal")}\n" : "Animaciones: descarga opcional\n")}1 trabajo a la vez\nAsistente y generador se cargan por turnos\nApoyo en RAM según memoria libre\nSolo conexión local protegida\nPerfil unificado: prueba física pendiente";
 
 
@@ -87,13 +89,15 @@ public sealed class VisualPane : UserControl
         new VisualJobStore(paths).RecoverInterrupted();
         var panel = new StackPanel { Margin = new(24), MaxWidth = 1200, HorizontalAlignment = HorizontalAlignment.Stretch };
         Content = new Border { Background = new SolidColorBrush(Color.FromRgb(24, 35, 44)), CornerRadius = new(14), Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } };
+        ToolTipService.SetShowOnDisabled(prepare, true);
         var preparation = new StackPanel();
         var details = new StackPanel(); details.Children.Add(package);
         preparation.Children.Add(new TextBlock { Text = "La preparación se hace una sola vez. Después podés crear sin conexión.", Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 10) });
-        preparation.Children.Add(animation); animation.Margin = new(0, 0, 0, 10);
+        preparation.Children.Add(imageModel); imageModel.Margin = new(0, 0, 0, 10);
+        preparation.Children.Add(enhancePrompt); enhancePrompt.Margin = new(0, 0, 0, 10);
+        preparation.Children.Add(animation); animation.Margin = new(0, 0, 0, 12);
         preparation.Children.Add(new TextBlock { Text = "Descarga directa sin cuenta ni token. HiDream incluye su procesamiento de texto e imagen; el asistente es opcional. Los modelos anteriores se conservan.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 12) });
-        preparation.Children.Add(enhancePrompt); enhancePrompt.Margin = new(0, 0, 0, 6);
-        preparation.Children.Add(importModels);
+        details.Children.Add(importModels);
         var licenses = new Button { Content = "Leer licencias", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10) };
         licenses.Click += (_, _) => ShowLicenses(); preparation.Children.Add(licenses);
         var check = new Button { Content = "Comprobar todo y guardar informe", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10), FontSize = 12 };
@@ -109,13 +113,13 @@ public sealed class VisualPane : UserControl
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { status("No se pudo guardar el informe: " + ex.Message); }
         };
-        preparation.Children.Add(check);
-        preparation.Children.Add(license); license.Margin = new(0, 0, 0, 12); license.Content = "Revisé y acepto las licencias de HiDream y los componentes visuales";
-        preparation.Children.Add(new Expander { Header = "Ver componentes y ubicaciones", Foreground = Brushes.LightGray, Content = details, Margin = new(0, 10, 0, 0) });
-        downloads.Header = "Modelos y descargas"; downloads.Content = preparation; downloads.IsExpanded = !IsPrepared;
+        details.Children.Add(check);
+        preparation.Children.Add(license); license.Margin = new(0, 0, 0, 12); license.Content = "Revisé y acepto las licencias de los modelos seleccionados y del motor";
+        var downloadOptions = new Expander { Header = "Opciones de descarga y diagnóstico", Foreground = Brushes.LightGray, Content = details, Margin = new(0, 12, 0, 0) };
+        downloads.Header = "Modelos y descargas"; downloads.Content = preparation; downloads.IsExpanded = !AllSelectedPrepared || !settings().Visual.HiDreamLicenseAccepted;
         var setup = new StackPanel(); setup.Children.Add(downloads);
         setupStatus.Margin = new(0, 10, 0, 0); setupStatus.FontSize = 12; setup.Children.Add(setupStatus);
-        prepare.HorizontalAlignment = HorizontalAlignment.Left; prepare.Margin = new(0, 12, 0, 0); preparation.Children.Add(prepare);
+        prepare.HorizontalAlignment = HorizontalAlignment.Left; prepare.Margin = new(0, 12, 0, 0); preparation.Children.Add(prepare); preparation.Children.Add(downloadOptions);
         panel.Children.Add(Card(setup));
         panel.Children.Add(workspace);
         workspace.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); workspace.ColumnDefinitions.Add(new() { Width = new(1.35, GridUnitType.Star) });
@@ -170,8 +174,8 @@ public sealed class VisualPane : UserControl
             else if (enhancePrompt.IsChecked != true) status("Asistente desactivado: HiDream recibe tu descripción tal cual y conviene escribirla en inglés. Los archivos descargados se conservan.");
         };
         reviewPreparedPrompt.Click += (_, _) => { settings().Visual.ReviewPreparedPrompt = reviewPreparedPrompt.IsChecked == true; Save(); };
-        animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); };
-        license.Click += (_, _) => { settings().Visual.LicenseAccepted = settings().Visual.HiDreamLicenseAccepted = license.IsChecked == true; Save(); };
+        animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); Refresh(); };
+        license.Click += (_, _) => { settings().Visual.LicenseAccepted = settings().Visual.HiDreamLicenseAccepted = license.IsChecked == true; Save(); Refresh(); };
         importModels.Click += async (_, _) =>
         {
             if (!available || IsActive) return;
@@ -184,7 +188,7 @@ public sealed class VisualPane : UserControl
         {
             if (!available || !compatible) return;
             if (license.IsChecked != true) { status("Revisá y aceptá las licencias visuales antes de descargar."); return; }
-            preparing = true;
+            preparing = true; Refresh();
             try { await run(async ct => { await provisioner.PrepareAsync(settings().Visual, new Progress<PreparationProgress>(progress), ct, gpu()); status("Modelos listos. Pulsá Iniciar IA arriba a la derecha."); }); }
             finally { preparing = false; Refresh(); }
         };
@@ -228,13 +232,16 @@ public sealed class VisualPane : UserControl
     /// <summary>Empty when the visual mode can start; otherwise the exact reason it cannot.</summary>
     public string StartProblem => gpu() is null
         ? "No se detectó una placa compatible (RTX 5070 Ti, RTX 5080 o RTX 3090)."
-        : IsPrepared ? "" : MissingDescription();
+        : !settings().Visual.HiDreamLicenseAccepted ? "Revisá y aceptá las licencias en Modelos y descargas."
+        : !AllSelectedPrepared ? MissingDescription(true)
+        : gpu()!.FreeMiB < 11000 ? "Necesitás al menos 11 GB de VRAM libres. Cerrá otras aplicaciones que usen la GPU."
+        : "";
     /// <summary>Say which file is missing instead of a generic "download the models".</summary>
-    private string MissingDescription()
+    private string MissingDescription(bool selected = false)
     {
         if (provisioner.RuntimeMissing) return "Falta el motor visual ComfyUI (2,0 GB comprimidos). Pulsá Descargar y preparar.";
-        var missing = provisioner.Missing(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant);
-        if (missing.Length == 0) return "Modelos listos. Pulsá Iniciar IA arriba a la derecha.";
+        var missing = provisioner.Missing(selected && settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant);
+        if (missing.Length == 0) return selected && !AllSelectedPrepared ? "Falta preparar los componentes de animación. Pulsá Descargar y preparar." : "Modelos listos. Pulsá Iniciar IA arriba a la derecha.";
         var detail = string.Join(" · ", missing.Select(m => m.Asset.Name + " (" + (m.Asset.Bytes!.Value / 1e9).ToString("0.0") + " GB)"));
         var hint = " Pulsá Descargar y preparar; lo descargado se reutiliza. Podés desactivar el asistente si preferís usar tu descripción directamente.";
         return "Falta descargar: " + detail + "." + hint;
@@ -243,12 +250,7 @@ public sealed class VisualPane : UserControl
     private void Refresh()
     {
         var prepared = IsPrepared;
-        prepare.IsEnabled = available && compatible && !IsActive;
-        prepare.Content = preparing ? "Descargando y preparando…" : !prepared ? "Descargar y preparar" : settings().Visual.IncludeAnimation && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant) ? "Agregar animaciones" : "Comprobar / reparar";
-        setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después." : loading ? "Iniciando la IA…" : IsReady ? "IA iniciada. Elegí qué querés crear." : prepared ? "Modelos listos. Pulsá Iniciar IA arriba a la derecha." : MissingDescription();
-        setupStatus.Visibility = prepared && !preparing && !loading ? Visibility.Collapsed : Visibility.Visible;
-        if (prepared && !wasPrepared && !preparing) downloads.IsExpanded = false;
-        wasPrepared = prepared;
+        ApplyPreparationState(AllSelectedPrepared);
         generate.IsEnabled = available && compatible && IsReady && (task.SelectedIndex != 1 || reference is not null)
             && (task.SelectedIndex != 2 || reference is not null && VisualCatalog.SupportsAnimation(gpu()) && provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant));
         prompt.IsEnabled = example.IsEnabled = available; task.IsEnabled = available;
@@ -283,6 +285,28 @@ public sealed class VisualPane : UserControl
         referenceLabel.Text = reference is null ? "Elegí una imagen para usarla como punto de partida." : task.SelectedIndex == 0 ? "Imagen disponible. Marcá la opción de referencia para usar su personaje en una escena nueva." : IsOwnedExistingResult(reference) ? "Imagen seleccionada de tus creaciones. Escribí qué querés cambiar." : "Imagen seleccionada: " + Path.GetFileName(reference);
         creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !VisualCatalog.SupportsAnimation(gpu()) ? "No se detectó una placa compatible con animación." : task.SelectedIndex == 2 && reference is null ? "Elegí una imagen inicial para animar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant) ? "Agregá el modelo de animación en Modelos y descargas." : "";
         creationHint.Visibility = string.IsNullOrEmpty(creationHint.Text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+    private void ApplyPreparationState(bool selectedPrepared)
+    {
+        prepare.IsEnabled = available && compatible && !IsActive && !preparing && settings().Visual.HiDreamLicenseAccepted;
+        prepare.Background = new SolidColorBrush(prepare.IsEnabled && !selectedPrepared ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67));
+        prepare.Foreground = Brushes.White;
+        prepare.Content = preparing ? "Descargando y preparando…" : selectedPrepared ? "Comprobar / reparar" : "Descargar y preparar";
+        prepare.ToolTip = !settings().Visual.HiDreamLicenseAccepted ? "Marcá Revisé y acepto para habilitar la preparación." : null;
+        var complete = selectedPrepared && settings().Visual.HiDreamLicenseAccepted;
+        downloads.Header = complete ? "Modelos y descargas · todo listo" : selectedPrepared ? "Modelos y descargas · aceptar licencias" : "Modelos y descargas";
+        setupStatus.Text = preparing ? "Descargando. Podés pausar desde el botón de arriba y continuar después."
+            : loading ? "Iniciando la IA…"
+            : !settings().Visual.HiDreamLicenseAccepted ? "Revisá las licencias y marcá Revisé y acepto para continuar."
+            : selectedPrepared ? "Todo listo. Pulsá Iniciar IA arriba a la derecha."
+            : "Listo para descargar. Pulsá Descargar y preparar.";
+        setupStatus.Visibility = complete && !preparing && !loading ? Visibility.Collapsed : Visibility.Visible;
+        if (!preparing)
+        {
+            if (complete && !wasSelectedPrepared) downloads.IsExpanded = false;
+            if (!complete && wasSelectedPrepared) downloads.IsExpanded = true;
+            wasSelectedPrepared = complete;
+        }
     }
     public async Task StartAsync(CancellationToken ct)
     {
@@ -441,6 +465,35 @@ public sealed class VisualPane : UserControl
     { var jobs = new VisualJobStore(paths).Read(); gallery.ItemsSource = jobs.Select(j => new GalleryItem(j)).ToArray(); gallery.Visibility = jobs.Length == 0 ? Visibility.Collapsed : Visibility.Visible; emptyGallery.Visibility = jobs.Length == 0 ? Visibility.Visible : Visibility.Collapsed; }
     internal void VerifyInterfaceForTests()
     {
+        var oldConsent = settings().Visual.HiDreamLicenseAccepted;
+        try
+        {
+            if (imageModel.IsChecked != true || enhancePrompt.IsChecked != settings().Visual.EnhancePrompt || animation.IsChecked != settings().Visual.IncludeAnimation)
+                throw new Exception("La lista de modelos no muestra HiDream, Gemma y Wan seleccionados según el perfil.");
+            settings().Visual.HiDreamLicenseAccepted = false; license.IsChecked = false; Refresh();
+            if (prepare.IsEnabled || ((SolidColorBrush)prepare.Background).Color != Color.FromRgb(38, 55, 67))
+                throw new Exception("La descarga se habilita o destaca sin aceptar licencias.");
+            ApplyPreparationState(true);
+            if (!downloads.IsExpanded || setupStatus.Visibility != Visibility.Visible) throw new Exception("Se ocultan las licencias pendientes aunque los archivos estén descargados.");
+            license.IsChecked = true; license.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            if (!prepare.IsEnabled || ((SolidColorBrush)prepare.Background).Color != Color.FromRgb(8, 127, 112))
+                throw new Exception("Aceptar las licencias no habilita y destaca la descarga.");
+            preparing = true; ApplyPreparationState(true); preparing = false; ApplyPreparationState(true);
+            if (downloads.IsExpanded || !downloads.Header.ToString()!.Contains("todo listo"))
+                throw new Exception("La sección no se repliega al completar los modelos elegidos.");
+            downloads.IsExpanded = true; ApplyPreparationState(true);
+            if (!downloads.IsExpanded) throw new Exception("No se pueden volver a abrir las opciones una vez preparado.");
+            ApplyPreparationState(false);
+            if (!downloads.IsExpanded || !prepare.IsEnabled || !Equals(prepare.Content, "Descargar y preparar"))
+                throw new Exception("Faltar un modelo seleccionado no vuelve a mostrar la preparación.");
+            available = false; ApplyPreparationState(false);
+            if (prepare.IsEnabled) throw new Exception("La preparación queda habilitada durante otra operación.");
+        }
+        finally
+        {
+            settings().Visual.HiDreamLicenseAccepted = oldConsent; license.IsChecked = oldConsent;
+            available = true; wasSelectedPrepared = false; downloads.IsExpanded = !AllSelectedPrepared || !settings().Visual.HiDreamLicenseAccepted; Save(); Refresh();
+        }
         Directory.CreateDirectory(paths.VisualOutputs);
         var file = Path.Combine(paths.VisualOutputs, "referencia-fixture.png");
         var image = BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, new byte[16], 8);

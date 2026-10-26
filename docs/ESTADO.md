@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-26 de octubre de 2026 · desarrollo 0.4.19.
+26 de octubre de 2026 · desarrollo 0.4.20.
+
+## Preparación y arranque más claros · 0.4.20
+
+- Modelos y descargas muestra tres filas: HiDream Full (principal, seleccionado siempre), Gemma 12B y Wan. Los tres vienen seleccionados en ajustes nuevos; las selecciones explícitas anteriores se conservan. Las licencias nunca se aceptan automáticamente.
+- Descargar y preparar permanece deshabilitado y neutro hasta aceptar las licencias, con equipo compatible y sin operación/motor activo. Se destaca en verde al poder preparar. Importar modelos, componentes e informe quedan bajo opciones, manteniendo el camino principal: revisar/aceptar y preparar.
+- El panel se repliega cuando termina la preparación de todos los modelos elegidos, incluido Wan si está marcado. Al volver a abrir Forja se inicia replegado si el perfil está completo y aceptado; se puede desplegar para revisar opciones. No oculta licencias pendientes ni modelos que faltan.
+- Iniciar IA solo se habilita y destaca cuando el modo está preparado, las licencias aceptadas y la VRAM libre alcanza el mínimo del perfil. La lectura periódica de VRAM actualiza ese estado. Programación exige además proyecto válido; Detener sigue accesible aunque el motor activo sea del otro modo.
+- Pruebas de interfaz cubren consentimiento, color, modelo pendiente, final de descarga, plegado, reapertura y operación ocupada sin descargar archivos de modelo ni iniciar inferencia.
 
 ## Un único generador y un único asistente · 0.4.19
 

@@ -13,7 +13,7 @@ public sealed class VisualSettings
     public bool FullEdit { get; set; } = true;
     /// <summary>Retained for old settings; the only active assistant is now Gemma 4 12B.</summary>
     public bool LargeAssistant { get; set; } = true;
-    public bool IncludeAnimation { get; set; }
+    public bool IncludeAnimation { get; set; } = true;
     public bool AnimationSol { get; set; } = true;
     public bool WebReferencesEnabled { get; set; } = true;
     public int Width { get; set; } = 2048;

@@ -7,6 +7,16 @@ static class VisualTests
 {
     public static async Task RunAsync(string root, Action<bool, string> assert, Func<string, Func<Task>, Task> test)
     {
+        await test("Preparación visual: los tres modelos vienen seleccionados sin aceptar licencias", () =>
+        {
+            var fresh = new VisualSettings();
+            assert(fresh.FullEdit && fresh.EnhancePrompt && fresh.LargeAssistant && fresh.IncludeAnimation, "Los tres modelos no están seleccionados por defecto.");
+            assert(!fresh.HiDreamLicenseAccepted && !fresh.LicenseAccepted, "Se aceptaron licencias automáticamente.");
+            var previous = JsonSerializer.Deserialize<VisualSettings>("{\"EnhancePrompt\":false,\"IncludeAnimation\":false}")!;
+            previous.Normalize();
+            assert(!previous.EnhancePrompt && !previous.IncludeAnimation, "Se sobrescribió una selección explícita anterior.");
+            return Task.CompletedTask;
+        });
         await test("HiDream: flujo nativo, referencias reales y asistente opcional por etapas", () =>
         {
             foreach (var kind in new[] { VisualTask.Image, VisualTask.Edit })
