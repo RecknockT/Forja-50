@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,8 +25,8 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox size = new() { ItemsSource = new[] { "Cuadrada · 1024 × 1024", "Horizontal · 1024 × 768", "Vertical · 768 × 1024" }, SelectedIndex = 0 };
     private readonly ComboBox duration = new() { ItemsSource = new[] { "3 segundos", "5 segundos" }, SelectedIndex = 0 };
     private readonly TextBox seed = new() { MinWidth = 180, MaxLength = 16 };
-    private readonly ComboBox steps = new() { ItemsSource = new[] { "10 pasos · más rápido", "20 pasos · inicial", "30 pasos · más lento" }, SelectedIndex = 1 };
-    private readonly CheckBox animation = new() { Content = "Descargar también Wan para animaciones y GIF" };
+    private readonly ComboBox animationMode = new() { ItemsSource = new[] { "Rápido · NVFP4 + Sol (experimental)", "Normal · NVFP4" }, SelectedIndex = 0 };
+    private readonly CheckBox animation = new() { Content = "Descargar Wan 14B NVFP4 para animaciones y GIF (perfil automático por GPU)" };
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
     private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un asistente visual local (8,09 GB adicionales)" };
     private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
@@ -77,7 +77,7 @@ public sealed class VisualPane : UserControl
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
     public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant);
-    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nCrear: HiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos · LCM\nEditar: {(settings().Visual.FullEdit ? "HiDream-O1 Full · FP8 · 40 pasos · CFG 5 · costuras" : "Dev · Euler de flujo · 28 pasos")}\nAsistente Gemma 4 {(settings().Visual.LargeAssistant ? "12B" : "E4B")} INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? "Wan 2.2 5B · FP16 · codificador FP8\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
+    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nCrear: HiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos · LCM\nEditar: {(settings().Visual.FullEdit ? "HiDream-O1 Full · FP8 · 40 pasos · CFG 5 · costuras" : "Dev · Euler de flujo · 28 pasos")}\nAsistente Gemma 4 {(settings().Visual.LargeAssistant ? "12B" : "E4B")} INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? gpu()?.IsRtx3090 == true ? "Wan 2.2 A14B · GGUF Q4_K_S · LightX2V · 4 pasos\n" : $"Wan 2.2 A14B · NVFP4 · 4 pasos · {(settings().Visual.AnimationSol ? "Sol experimental" : "Normal")}\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
 
 
     public VisualPane(AppPaths paths, Func<AppSettings> settings, HttpClient http, Func<GpuInfo?> gpu,
@@ -143,7 +143,8 @@ public sealed class VisualPane : UserControl
         var options = new WrapPanel(); options.Children.Add(size); options.Children.Add(duration); editor.Children.Add(options); editor.Children.Add(imageQuality); imageQuality.Margin = new(0, 8, 0, 0);
         editor.Children.Add(animationHint);
         var advanced = new StackPanel(); advanced.Children.Add(new TextBlock { Text = "Semilla: dejala vacía para variar cada resultado." }); advanced.Children.Add(seed);
-        advanced.Children.Add(new TextBlock { Text = "Pasos de animación (HiDream utiliza 28 pasos)." }); advanced.Children.Add(steps);
+        advanced.Children.Add(animationMode);
+        animationMode.SelectionChanged += (_, _) => { settings().Visual.AnimationSol = animationMode.SelectedIndex == 0; Save(); };
         editor.Children.Add(new Expander { Header = "Más opciones", Foreground = Brushes.LightGray, Content = advanced, Margin = new(0, 12, 0, 14) });
         editor.Children.Add(webReferences);
         var webOptions = new StackPanel();
@@ -234,7 +235,7 @@ public sealed class VisualPane : UserControl
         webReferences.IsChecked = visual.WebReferencesEnabled;
         size.SelectedIndex = visual.Width > visual.Height ? 1 : visual.Height > visual.Width ? 2 : 0;
         duration.SelectedIndex = visual.AnimationFrames == 121 ? 1 : 0;
-        steps.SelectedIndex = visual.AnimationSteps switch { 10 => 0, 30 => 2, _ => 1 };
+        animationMode.SelectedIndex = visual.AnimationSol ? 0 : 1;
         UpdatePackage(); LoadGallery(); Refresh();
     }
     public void SetAvailable(bool available, bool compatible)
@@ -269,10 +270,10 @@ public sealed class VisualPane : UserControl
         if (prepared && !wasPrepared && !preparing) downloads.IsExpanded = false;
         wasPrepared = prepared;
         generate.IsEnabled = available && compatible && IsReady && (task.SelectedIndex != 1 || reference is not null)
-            && (task.SelectedIndex != 2 || provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant));
+            && (task.SelectedIndex != 2 || reference is not null && VisualCatalog.SupportsAnimation(gpu()) && provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant));
         prompt.IsEnabled = example.IsEnabled = available; task.IsEnabled = available;
         for (var index = 0; index < taskTabs.Length; index++) { taskTabs[index].IsEnabled = available; taskTabs[index].Background = new SolidColorBrush(index == task.SelectedIndex ? Color.FromRgb(8, 127, 112) : Color.FromRgb(38, 55, 67)); }
-        animation.IsEnabled = license.IsEnabled = available && !IsActive;
+        license.IsEnabled = available && !IsActive; animation.IsEnabled = available && !IsActive && VisualCatalog.SupportsAnimation(gpu());
         enhancePrompt.IsEnabled = importModels.IsEnabled = available && !IsActive;
         reviewPreparedPrompt.IsEnabled = available && settings().Visual.EnhancePrompt;
         reviewPreparedPrompt.Visibility = settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed;
@@ -282,7 +283,7 @@ public sealed class VisualPane : UserControl
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = useIdentity.IsEnabled = available;
         imageQuality.IsEnabled = available && task.SelectedIndex != 2; imageQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
-        seed.IsEnabled = available; steps.IsEnabled = available && task.SelectedIndex == 2;
+        seed.IsEnabled = available; animationMode.IsEnabled = available && gpu()?.IsRtx3090 != true; animationMode.Visibility = task.SelectedIndex == 2 && gpu()?.IsRtx3090 != true ? Visibility.Visible : Visibility.Collapsed;
         webReferences.IsEnabled = available && task.SelectedIndex == 0;
         webReferences.Visibility = onlineOptions.Visibility = task.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         webSubject.IsEnabled = available && task.SelectedIndex == 0 && webReferences.IsChecked == true;
@@ -293,17 +294,17 @@ public sealed class VisualPane : UserControl
             size.SelectedIndex = format;
         }
         animationHint.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
-        animationHint.Text = reference is null ? "Sin imagen: se crea el video desde tu descripción. Para animar algo concreto, elegí una imagen inicial y describí su movimiento." : "La imagen será el primer fotograma y se ajustará sin recortarla. Describí qué se desplaza, hacia dónde y cómo se mueve la cámara. El final no tiene por qué coincidir con el inicio del GIF.";
+        animationHint.Text = reference is null ? "Wan 14B necesita una imagen inicial. Elegí una de tu PC o creala primero en Crear imagen. Forja elige NVFP4 para RTX 50 y GGUF para RTX 3090." : "La imagen será el primer fotograma y se ajustará sin recortarla. Describí qué se desplaza, hacia dónde y cómo se mueve la cámara. El final no tiene por qué coincidir con el inicio del GIF. La opción de 5 segundos es experimental y requiere más memoria.";
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
-        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar. El resultado conserva su encuadre, en una resolución entrenada.", 2 => "Animá una imagen o describí un video nuevo.", _ => "Describí la escena que imaginás." };
+        taskHelp.Text = task.SelectedIndex switch { 1 => "Elegí una imagen y contá qué detalle querés cambiar. El resultado conserva su encuadre, en una resolución entrenada.", 2 => "Elegí una imagen y describí su movimiento. Wan 14B · 4 pasos. En RTX 50 podés cambiar Normal / Sol en Más opciones; RTX 3090 usa GGUF.", _ => "Describí la escena que imaginás." };
         referenceActions.Visibility = Visibility.Visible;
         useIdentity.Visibility = task.SelectedIndex == 0 && reference is not null ? Visibility.Visible : Visibility.Collapsed;
         clear.Visibility = reference is null ? Visibility.Collapsed : Visibility.Visible;
         referenceLabel.Visibility = reference is not null || task.SelectedIndex != 0 ? Visibility.Visible : Visibility.Collapsed;
         referenceLabel.Text = reference is null ? "Elegí una imagen para usarla como punto de partida." : task.SelectedIndex == 0 ? "Imagen disponible. Marcá la opción de referencia para usar su personaje en una escena nueva." : IsOwnedExistingResult(reference) ? "Imagen seleccionada de tus creaciones. Escribí qué querés cambiar." : "Imagen seleccionada: " + Path.GetFileName(reference);
-        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant) ? "Agregá el modelo de animación en Modelos y descargas." : "";
+        creationHint.Text = generating ? "Creando… Podés cancelar desde el botón de arriba." : !prepared ? "Descargá los modelos en Modelos y descargas para empezar." : !IsReady ? "Pulsá Iniciar IA arriba a la derecha para crear." : task.SelectedIndex == 1 && reference is null ? "Primero elegí la imagen que querés editar." : task.SelectedIndex == 2 && !VisualCatalog.SupportsAnimation(gpu()) ? "No se detectó una placa compatible con animación." : task.SelectedIndex == 2 && reference is null ? "Elegí una imagen inicial para animar." : task.SelectedIndex == 2 && !provisioner.IsPrepared(true, gpu(), settings().Visual.EnhancePrompt, false, settings().Visual.LargeAssistant) ? "Agregá el modelo de animación en Modelos y descargas." : "";
         creationHint.Visibility = string.IsNullOrEmpty(creationHint.Text) ? Visibility.Collapsed : Visibility.Visible;
     }
     public async Task StartAsync(CancellationToken ct)
@@ -328,10 +329,10 @@ public sealed class VisualPane : UserControl
             var frames = duration.SelectedIndex == 1 ? 121 : 73;
             if (kind == VisualTask.Animation) (width, height) = VisualAnimation.Dimensions(size.SelectedIndex);
             if (kind != VisualTask.Animation) { visual.Width = width; visual.Height = height; }
-            visual.AnimationFrames = frames; visual.AnimationSteps = steps.SelectedIndex switch { 0 => 10, 2 => 30, _ => 20 }; Save();
+            visual.AnimationFrames = frames; visual.AnimationSteps = 4; Save();
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
             if (!string.IsNullOrWhiteSpace(seed.Text) && !long.TryParse(seed.Text, out chosenSeed)) throw new InvalidDataException("La semilla debe ser un número entero positivo o estar vacía.");
-            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, gpu()?.IsRtx3090 == true, visual.EnhancePrompt, kind == VisualTask.Edit && visual.FullEdit, visual.LargeAssistant);
+            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, gpu()?.IsRtx3090 == true, visual.EnhancePrompt, kind == VisualTask.Edit && visual.FullEdit, visual.LargeAssistant, gpu()?.IsRtx3090 != true && visual.AnimationSol, gpu()?.IsRtx3090 == true);
             request.Validate();
             var chosenReference = kind == VisualTask.Image && useIdentity.IsChecked != true ? null : reference;
             VisualReference? discovered = chosenReference is null ? null : onlineReference;

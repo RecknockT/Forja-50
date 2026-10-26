@@ -18,6 +18,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Las pruebas fallaron.' }
 if ($env:FORJA_TEST_PYTHON) {
     & $env:FORJA_TEST_PYTHON (Join-Path $projectRoot 'tests/visual_bridge_test.py')
     if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba del puente visual.' }
+    & $env:FORJA_TEST_PYTHON (Join-Path $projectRoot 'tests/wan_stage_test.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba de etapas Wan.' }
 }
 & (Join-Path $PSScriptRoot 'Verificar-Cierre.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
 & (Join-Path $PSScriptRoot 'Verificar-Configuracion.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')

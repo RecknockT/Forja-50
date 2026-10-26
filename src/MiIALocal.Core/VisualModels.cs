@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace MiIALocal.Core;
 
@@ -14,17 +14,18 @@ public sealed class VisualSettings
     /// <summary>Use the Gemma 4 12B INT8 assistant instead of the E4B; better quality, ~11,2 GB and slower.</summary>
     public bool LargeAssistant { get; set; }
     public bool IncludeAnimation { get; set; }
+    public bool AnimationSol { get; set; } = true;
     public bool WebReferencesEnabled { get; set; } = true;
     public int Width { get; set; } = 2048;
     public int Height { get; set; } = 2048;
     public int AnimationFrames { get; set; } = 73;
-    public int AnimationSteps { get; set; } = 20;
+    public int AnimationSteps { get; set; } = 4;
     public void Normalize()
     {
         if (Width is < 512 or > 2048 || Width % 32 != 0) Width = 1024;
         if (Height is < 512 or > 2048 || Height % 32 != 0) Height = 1024;
         if (AnimationFrames is < 25 or > 121 || AnimationFrames % 4 != 1) AnimationFrames = 73;
-        if (AnimationSteps is < 10 or > 30) AnimationSteps = 20;
+        AnimationSteps = 4;
     }
 }
 
@@ -47,24 +48,35 @@ public static class VisualCatalog
     public static VisualModel Assistant(bool large) => large ? PromptAssistant12B : PromptAssistant;
     public static VisualModel Checkpoint(GpuInfo? gpu) => gpu?.IsRtx3090 == true ? HiDreamBf16 : HiDream;
     // Retain legacy downloads in storage management; never delete them as part of migration.
-    public static readonly VisualModel[] Legacy = [
+    public static VisualModel[] Legacy => [LegacyWan, LegacyWanVae,
         Model("visual-flux", "FLUX.2 Klein 4B anterior", "Comfy-Org/flux2-klein-4B", "5f526678002e43af5551dadb73ce2e8c91b43afe", "diffusion_models/flux-2-klein-4b.safetensors", 7751105712, "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343"),
         Model("visual-flux-text", "Codificador Qwen3 4B anterior", "Comfy-Org/flux2-klein-4B", "5f526678002e43af5551dadb73ce2e8c91b43afe", "text_encoders/qwen_3_4b.safetensors", 8044982048, "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a")];
     public static readonly VisualModel FluxVae = Model("visual-flux-vae", "Decodificador de imágenes", "Comfy-Org/flux2-klein-4B", "5f526678002e43af5551dadb73ce2e8c91b43afe", "vae/flux2-vae.safetensors", 336211292, "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3");
-    public static readonly VisualModel Wan = Model("visual-wan", "Wan 2.2 5B · animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors", 9999658848, "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e");
+    public static readonly VisualModel LegacyWan = Model("visual-wan", "Wan 2.2 5B · animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors", 9999658848, "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e");
     public static readonly VisualModel WanText = Model("visual-wan-text", "Codificador de animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors", 6735906897, "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68");
-    public static readonly VisualModel WanVae = Model("visual-wan-vae", "Decodificador de animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "vae/wan2.2_vae.safetensors", 1409400960, "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156");
+    public static readonly VisualModel LegacyWanVae = Model("visual-wan-vae", "Decodificador de animación", "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "ee6f4a40737a995bf5818954cfce6d59443b0f04", "vae/wan2.2_vae.safetensors", 1409400960, "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156");
     public static VisualModel[] Images => [HiDream, HiDreamBf16, HiDreamFull, PromptAssistant, PromptAssistant12B];
-    public static VisualModel[] Animations => [Wan, WanText, WanVae];
-    public static VisualModel[] All => [.. Images, .. Animations, .. Legacy, FluxVae];
+    public static readonly VisualModel Wan = new(new("visual-wan-14b", "Wan 2.2 A14B NVFP4 · etapa inicial", "https://huggingface.co/lightx2v/LightWan2.2-A14B/resolve/f4b91eba1fd7dc2eb038191e2bca7ed33423032d/Wan2.2-I2V-A14B_NVFP4_Sparse_high_comfy.safetensors", "998934b07f124111b83c3bfcdf9efc2ff67ff531879806e54a1453c14066a5db", "Wan2.2-I2V-A14B_NVFP4_Sparse_high_comfy.safetensors", 8379918824), "diffusion_models");
+    public static readonly VisualModel WanLow = new(new("visual-wanlow-14b", "Wan 2.2 A14B NVFP4 · etapa final", "https://huggingface.co/lightx2v/LightWan2.2-A14B/resolve/f4b91eba1fd7dc2eb038191e2bca7ed33423032d/Wan2.2-I2V-A14B_NVFP4_Sparse_low_comfy.safetensors", "a26076d43590941a6526ed52d2b682a9340c81f650ada0751a90e5bdcde5efb7", "Wan2.2-I2V-A14B_NVFP4_Sparse_low_comfy.safetensors", 8379918824), "diffusion_models");
+    public static readonly VisualModel WanVae = new(new("visual-wanvae-14b", "Decodificador Wan 2.1 · A14B", "https://huggingface.co/Comfy-Org/Wan-2.2/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/vae/wan_2.1_vae.safetensors", "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b", "wan_2.1_vae.safetensors", 253815318), "vae");
+    public static readonly VisualModel WanGguf = new(new("visual-wangguf", "Wan 2.2 A14B GGUF Q4_K_S · etapa inicial · RTX 3090", "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/6c6717459277b9cd1f72579d78a0fd62a79e57dc/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf", "8fc5f726ccf1214e43c6a599bdef1e63daf7fab06e71fb74081416c4b9ce200b", "Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf", 8748151296), "diffusion_models");
+    public static readonly VisualModel WanGgufLow = new(new("visual-wangguflow", "Wan 2.2 A14B GGUF Q4_K_S · etapa final · RTX 3090", "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/6c6717459277b9cd1f72579d78a0fd62a79e57dc/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf", "54e2313ef7fbb169e72ab1d7cecdc90a04db01097c86f9f39097b8caacea50fb", "Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf", 8748151296), "diffusion_models");
+    public static readonly VisualModel WanLora = new(new("visual-wanlora", "LightX2V 4 pasos · etapa inicial", "https://huggingface.co/Comfy-Org/Wan-2.2/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", "d176c808d6fc461999b68e321efcb7501b20b8c3797523ed0df14f7d1deff11e", "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", 1226977424), "loras");
+    public static readonly VisualModel WanLoraLow = new(new("visual-wanloralow", "LightX2V 4 pasos · etapa final", "https://huggingface.co/Comfy-Org/Wan-2.2/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors", "024f21de095bc8fad9809ded3e9e49a2e170dcf27075da8145ba7d60d8aab7f9", "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors", 1226977424), "loras");
+    public static bool SupportsAnimation(GpuInfo? gpu) => gpu is not null && (gpu.IsRtx3090 || gpu.Name.Contains("5080") || gpu.Name.Contains("5070 Ti"));
+    public static VisualModel[] Animations => [Wan, WanLow, WanText, WanVae];
+    public static VisualModel[] GgufAnimations => [WanGguf, WanGgufLow, WanLora, WanLoraLow, WanText, WanVae];
+    public static VisualModel[] AnimationFor(GpuInfo? gpu) => gpu?.IsRtx3090 == true ? GgufAnimations : Animations;
+    public static VisualModel[] All => [.. Images, .. Animations, .. GgufAnimations.Except(Animations), .. Legacy, FluxVae];
     // The Full editing checkpoint and the large assistant are part of the image profile whenever
     // their options are on; the animation checks pass fullEdit:false, so preparing with animations
     // enabled still downloads them.
     public static VisualModel[] For(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false) =>
-        [Checkpoint(gpu), .. fullEdit ? new[] { HiDreamFull } : [], .. assistant ? new[] { Assistant(largeAssistant) } : [], .. animation ? Animations : []];
+        [Checkpoint(gpu), .. fullEdit ? new[] { HiDreamFull } : [], .. assistant ? new[] { Assistant(largeAssistant) } : [], .. animation ? AnimationFor(gpu) : []];
     public static string PathFor(AppPaths paths, VisualModel model) => Path.Combine(paths.VisualModels, model.Folder, model.Asset.FileName);
     public static long DownloadBytes(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false) =>
-        Runtime.Bytes!.Value + For(animation, gpu, assistant, fullEdit, largeAssistant).Sum(m => m.Asset.Bytes!.Value);
+        Runtime.Bytes!.Value + For(animation, gpu, assistant, fullEdit, largeAssistant).Sum(m => m.Asset.Bytes!.Value)
+        + (animation && gpu?.IsRtx3090 == true ? GgufRuntime.Assets.Sum(a => a.Bytes!.Value) : 0);
 
 }
 
@@ -97,7 +109,7 @@ public static class VisualSizes
     }
 }
 
-public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, int Height, long Seed, int Frames = 73, int Steps = 20, bool HighPrecision = false, bool EnhancePrompt = false, bool FullEdit = false, bool LargeAssistant = false)
+public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, int Height, long Seed, int Frames = 73, int Steps = 4, bool HighPrecision = false, bool EnhancePrompt = false, bool FullEdit = false, bool LargeAssistant = false, bool AnimationSol = true, bool AnimationGguf = false)
 {
     public void Validate()
     {
@@ -110,7 +122,7 @@ public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, in
         else if (Width < 256 || Height < 256 || Width > 3104 || Height > 3104 || Width % 32 != 0 || Height % 32 != 0 || (long)Width * Height > 2048L * 2048)
             throw new InvalidDataException("La resolución supera el perfil visual o no es múltiplo de 32.");
         if (Seed < 0 || Seed > 9007199254740991L) throw new InvalidDataException("Semilla fuera de rango.");
-        if (Frames is < 25 or > 121 || Frames % 4 != 1 || Steps is < 10 or > 30) throw new InvalidDataException("Duración o pasos de animación fuera del perfil.");
+        if (Frames is < 25 or > 121 || Frames % 4 != 1 || Steps is < 4 or > 30) throw new InvalidDataException("Duración o pasos de animación fuera del perfil.");
     }
 }
 

@@ -1,4 +1,4 @@
-﻿namespace MiIALocal.Core;
+namespace MiIALocal.Core;
 
 public static class VisualWorkflows
 {
@@ -64,20 +64,31 @@ public static class VisualWorkflows
         }
         else
         {
-            Node("1", "UNETLoader", ("unet_name", VisualCatalog.Wan.Asset.FileName), ("weight_dtype", "default"));
-            Node("2", "CLIPLoader", ("clip_name", VisualCatalog.WanText.Asset.FileName), ("type", "wan"), ("device", "default"));
-            Node("3", "VAELoader", ("vae_name", VisualCatalog.WanVae.Asset.FileName));
-            // The assistant, when active, already produced the English motion instruction.
-            Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.Prompt(preparedPrompt ?? r.Prompt, reference is not null)));
-            Node("5", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.NegativePrompt));
-            Node("6", "Wan22ImageToVideoLatent", ("vae", Link("3")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
-            if (reference is not null)
+            foreach (var (id, high) in new[] { ("1", true), ("40", false) })
             {
-                Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
-                Node("6", "Wan22ImageToVideoLatent", ("vae", Link("3")), ("start_image", Link("21")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
+                if (r.AnimationGguf)
+                {
+                    Node(id + "00", "UnetLoaderGGUFAdvanced", ("unet_name", (high ? VisualCatalog.WanGguf : VisualCatalog.WanGgufLow).Asset.FileName),
+                        ("dequant_dtype", "bfloat16"), ("patch_dtype", "bfloat16"), ("patch_on_device", true));
+                    Node(id, "LoraLoaderModelOnly", ("model", Link(id + "00")), ("lora_name", (high ? VisualCatalog.WanLora : VisualCatalog.WanLoraLow).Asset.FileName), ("strength_model", 1.0));
+                }
+                else Node(id, "UNETLoader", ("unet_name", (high ? VisualCatalog.Wan : VisualCatalog.WanLow).Asset.FileName), ("weight_dtype", "default"));
             }
-            Node("7", "ModelSamplingSD3", ("model", Link("1")), ("shift", 8.0));
-            Node("11", "KSampler", ("model", Link("7")), ("positive", Link("4")), ("negative", Link("5")), ("latent_image", Link("6")), ("seed", r.Seed), ("steps", r.Steps), ("cfg", 5.0), ("sampler_name", "uni_pc"), ("scheduler", "simple"), ("denoise", 1.0));
+            Node("2", "ForjaWanTextLoader", ("clip_name", VisualCatalog.WanText.Asset.FileName));
+            Node("3", "VAELoader", ("vae_name", VisualCatalog.WanVae.Asset.FileName));
+            Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.Prompt(preparedPrompt ?? r.Prompt, true)));
+            Node("5", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.NegativePrompt));
+            Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
+            Node("6", "WanImageToVideo", ("positive", Link("4")), ("negative", Link("5")), ("vae", Link("3")),
+                ("start_image", Link("21")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
+            Node("7", "ModelSamplingSD3", ("model", Link("1")), ("shift", r.AnimationGguf ? 5.0 : 7.0));
+            Node("41", "ModelSamplingSD3", ("model", Link("40")), ("shift", r.AnimationGguf ? 5.0 : 7.0));
+            foreach (var (id, model, start, end) in new[] { ("10", "7", 0, 2), ("11", "41", 2, 4) })
+                Node(id, "ForjaWanStage", ("model", Link(model)), ("sol", !r.AnimationGguf && r.AnimationSol), ("nvfp4", !r.AnimationGguf),
+                    ("add_noise", start == 0 ? "enable" : "disable"), ("noise_seed", r.Seed), ("steps", 4), ("cfg", 1.0),
+                    ("sampler_name", "euler"), ("scheduler", "simple"), ("positive", Link("6")), ("negative", Link("6", 1)),
+                    ("latent_image", start == 0 ? Link("6", 2) : Link("10")), ("start_at_step", start), ("end_at_step", end),
+                    ("return_with_leftover_noise", start == 0 ? "enable" : "disable"));
         }
         Node("12", "VAEDecode", ("samples", Link("11")), ("vae", animation ? Link("3") : Link("1", 2)));
         if (!animation) Node("13", "SaveImage", ("images", Link("12")), ("filename_prefix", prefix));
@@ -164,6 +175,7 @@ public static class VisualWorkflows
         r.Validate();
         if (prefix is not null && (prefix.Length != 32 || !prefix.All(Uri.IsHexDigit))) throw new InvalidDataException("Destino visual inválido.");
         if (reference is not null && (Path.GetFileName(reference) != reference || reference.IndexOfAny(['/', '\\', ':']) >= 0)) throw new InvalidDataException("Referencia visual inválida.");
+        if (r.Task == VisualTask.Animation && reference is null) throw new InvalidDataException("Elegí una imagen inicial para animar con Wan 14B.");
         if (r.Task == VisualTask.Edit && reference is null) throw new InvalidDataException("Seleccioná una imagen para editar.");
     }
 }

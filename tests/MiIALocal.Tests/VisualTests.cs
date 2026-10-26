@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using MiIALocal.Core;
@@ -195,8 +195,8 @@ static class VisualTests
                 assert(graph.GetProperty("6").GetProperty("inputs").GetProperty("start_image")[0].GetString() == "21", "No se usa el marco ajustado.");
                 assert(width * height <= 768 * 448, "El nuevo formato aumenta el presupuesto de píxeles.");
             }
-            var textOnly = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "car moving", 768, 448, 1), new string('a', 32)));
-            assert(!textOnly.GetProperty("6").GetProperty("inputs").TryGetProperty("start_image", out _) && VisualAnimation.Prompt("car moving", false) == "car moving", "Video sin referencia hereda una imagen.");
+            try { VisualWorkflows.Build(new(VisualTask.Animation, "car moving", 768, 448, 1), new string('a', 32)); throw new Exception("Wan I2V aceptó una animación sin referencia."); }
+            catch (InvalidDataException) { }
             return Task.CompletedTask;
         });
         await test("Visual: búsqueda real del protocolo, imagen acotada y procedencia persistente", async () =>
@@ -240,7 +240,7 @@ static class VisualTests
         });
         await test("Visual: exportación MP4 usa DynamicCombo plano y errores distinguen memoria", () =>
         {
-            var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "Robot", 768, 448, 1), new string('a', 32)));
+            var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "Robot", 768, 448, 1), new string('a', 32), "ref.png"));
             var inputs = graph.GetProperty("14").GetProperty("inputs");
             assert(inputs.GetProperty("format").GetString() == "mp4" && inputs.GetProperty("format.codec").GetString() == "h264", "Formato incompatible con la API dinámica.");
             using var typeError = JsonDocument.Parse("{\"messages\":[[\"execution_error\",{\"node_type\":\"SaveVideo\",\"exception_type\":\"TypeError\",\"exception_message\":\"missing format\"}]]}");
@@ -276,8 +276,8 @@ static class VisualTests
         });
         await test("Visual: catálogo completo fijado, animación opcional y sin Qwen/OpenCode", () =>
         {
-            assert(VisualCatalog.Images.Length == 5 && VisualCatalog.For(true).Length == 5 && VisualCatalog.Legacy.Length == 2, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
-            assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 6, "El modelo Full para editar no se agrega al perfil.");
+            assert(VisualCatalog.Images.Length == 5 && VisualCatalog.For(true).Length == 6 && VisualCatalog.Legacy.Length == 4, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
+            assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 7, "El modelo Full para editar no se agrega al perfil.");
             foreach (var model in VisualCatalog.All)
             {
                 assert(model.Asset.Bytes > 0 && model.Asset.Sha256.Length == 64 && !model.Asset.Url.Contains("/main/"), "Modelo sin integridad o revisión fija.");
@@ -306,8 +306,26 @@ static class VisualTests
         {
             var graph = VisualWorkflows.Build(new(VisualTask.Animation, "Saluda", 768, 448, 42), new string('c', 32), "ref.png");
             var json = JsonSerializer.Serialize(graph);
-            assert(json.Contains("Wan22ImageToVideoLatent") && json.Contains("ForjaSaveGif") && json.Contains("SaveVideo") && json.Contains("start_image"), "Falta un formato o referencia.");
-            assert(graph.Values.Count(n => JsonSerializer.Serialize(n).Contains("\"class_type\":\"KSampler\"")) == 1, "GIF requiere una generación extra.");
+            assert(json.Contains("WanImageToVideo") && json.Contains("ForjaSaveGif") && json.Contains("SaveVideo") && json.Contains("start_image"), "Falta un formato o referencia.");
+            assert(graph.Values.Count(n => JsonSerializer.Serialize(n).Contains("\"class_type\":\"ForjaWanStage\"")) == 2, "Se requieren exactamente dos expertos para ambos formatos.");
+            var normal = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "Saluda", 576, 576, 42, AnimationSol: false), new string('c', 32), "ref.png"));
+            var rapid = JsonSerializer.SerializeToElement(graph);
+            File.WriteAllText(Path.Combine(root, "wan-normal-graph.json"), normal.GetRawText());
+            File.WriteAllText(Path.Combine(root, "wan-sol-graph.json"), rapid.GetRawText());
+            foreach (var id in new[] { "1", "40", "3" })
+                assert(normal.GetProperty(id).GetProperty("inputs").ToString() == rapid.GetProperty(id).GetProperty("inputs").ToString(), "Sol duplica o cambia los modelos.");
+            foreach (var id in new[] { "10", "11" })
+            {
+                var input = rapid.GetProperty(id).GetProperty("inputs");
+                assert(input.GetProperty("sol").GetBoolean() && !normal.GetProperty(id).GetProperty("inputs").GetProperty("sol").GetBoolean(), "El selector Sol no llega a ambos expertos.");
+                assert(input.GetProperty("steps").GetInt32() == 4 && input.GetProperty("cfg").GetDouble() == 1, "Receta destilada incorrecta.");
+            }
+            assert(rapid.GetProperty("10").GetProperty("inputs").GetProperty("return_with_leftover_noise").GetString() == "enable"
+                && rapid.GetProperty("11").GetProperty("inputs").GetProperty("add_noise").GetString() == "disable", "Se reinicia el ruido entre expertos.");
+            assert(!VisualCatalog.Animations.Contains(VisualCatalog.LegacyWan) && !VisualCatalog.Animations.Contains(VisualCatalog.LegacyWanVae)
+                && VisualCatalog.Legacy.Contains(VisualCatalog.LegacyWan) && VisualCatalog.Animations.Contains(VisualCatalog.WanLow), "Catálogo de animación o limpieza anterior incorrecto.");
+            var settings = new VisualSettings { AnimationSteps = 30 }; settings.Normalize();
+            assert(settings.AnimationSteps == 4 && settings.AnimationSol, "No se migran pasos antiguos ni se activa Sol por defecto.");
             return Task.CompletedTask;
         });
         await test("Visual: rechazar parámetros, rutas e identificadores ajenos", () =>
@@ -321,6 +339,29 @@ static class VisualTests
             Reject(() => VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 1), new string('a', 32), preparedPrompt: " "));
             Reject(() => VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 1), new string('a', 32), preparedPrompt: new string('x', 12001)));
             try { _ = new ComfyClient(new(), new("http://example.com/"), "secret"); throw new Exception("Se admitió un motor externo."); } catch (ArgumentException) { }
+            return Task.CompletedTask;
+        });
+        await test("Wan 14B: perfiles por GPU, GGUF sin Sol y descarga sin pesos duplicados", () =>
+        {
+            foreach (var name in new[] { "RTX 3090", "RTX 5080", "RTX 5070 Ti" })
+            {
+                var gpu = new GpuInfo(0, "NVIDIA GeForce " + name, name.Contains("3090") ? 24576 : 16384, 16000, "fixture");
+                var models = VisualCatalog.For(true, gpu);
+                assert(VisualCatalog.SupportsAnimation(gpu) && !models.Contains(VisualCatalog.LegacyWan), "GPU sin perfil o heredó Wan 5B.");
+                assert(models.Contains(VisualCatalog.WanGguf) == gpu.IsRtx3090 && models.Contains(VisualCatalog.Wan) != gpu.IsRtx3090, "Se descargan ambos formatos de pesos.");
+                var request = new VisualRequest(VisualTask.Animation, "Saluda", 576, 576, 42, AnimationSol: !gpu.IsRtx3090, AnimationGguf: gpu.IsRtx3090);
+                var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(request, new string('a', 32), "ref.png"));
+                if (gpu.IsRtx3090)
+                {
+                    assert(graph.GetProperty("100").GetProperty("class_type").GetString() == "UnetLoaderGGUFAdvanced" && graph.GetProperty("1").GetProperty("class_type").GetString() == "LoraLoaderModelOnly", "Falta el cargador o LoRA del experto inicial.");
+                    assert(graph.GetProperty("4000").GetProperty("class_type").GetString() == "UnetLoaderGGUFAdvanced", "Falta el experto final.");
+                    assert(graph.GetProperty("7").GetProperty("inputs").GetProperty("shift").GetDouble() == 5, "Shift de GGUF incorrecto.");
+                    assert(!graph.GetProperty("10").GetProperty("inputs").GetProperty("sol").GetBoolean() && !graph.GetProperty("11").GetProperty("inputs").GetProperty("nvfp4").GetBoolean(), "La 3090 recibe NVFP4/Sol.");
+                    File.WriteAllText(Path.Combine(root, "wan-3090-graph.json"), graph.GetRawText());
+                }
+            }
+            assert(GgufRuntime.Assets.All(a => a.Sha256.Length == 64 && a.Bytes > 0), "Dependencias GGUF sin integridad.");
+            assert(!new GgufRuntime(new AppPaths(Path.Combine(root, "gguf-missing")), new VerifiedDownloader(new HttpClient())).IsPrepared, "GGUF se anuncia listo sin instalar el cargador.");
             return Task.CompletedTask;
         });
         await test("Visual: perfiles RTX 30/50, solo proceso local y sin aceleraciones obligatorias FP8/FP4", () =>

@@ -16,7 +16,7 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
         ct.ThrowIfCancellationRequested();
         var models = new List<string>(); var legacy = new List<string>(); var partials = new List<string>();
         var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings), Previous: false))
-            .Concat(VisualCatalog.Images.Concat(VisualCatalog.Animations).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: false)))
+            .Concat(VisualCatalog.Images.Concat(VisualCatalog.Animations).Concat(VisualCatalog.GgufAnimations.Except(VisualCatalog.Animations)).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: false)))
             .Concat(VisualCatalog.Legacy.Append(VisualCatalog.FluxVae).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: true)));
         foreach (var (asset, modelDirectory, previous) in managedModels)
         {
@@ -40,7 +40,7 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
             if (Path.GetFileName(file) == "settings.json" || Path.GetFileName(file).StartsWith("settings.invalid-", StringComparison.Ordinal) || Path.GetFileName(file).StartsWith("settings.json.before-native-", StringComparison.Ordinal)) configuration.Add(file);
         return [
             Entry(StorageCategory.Models, "Modelos descargados por Forja", models, ct),
-            Entry(StorageCategory.Legacy, "Modelos anteriores (FLUX.2 y Qwen3, ya no se usan)", legacy, ct),
+            Entry(StorageCategory.Legacy, "Modelos anteriores (Wan 5B, FLUX.2 y Qwen3, ya no se usan)", legacy, ct),
             Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime], ct),
             Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials), ct),
             Entry(StorageCategory.Conversations, "Conversaciones e historial de trabajos", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md", "visual/jobs", "visual/user" }.Select(p => Path.Combine(paths.Root, p)), ct),

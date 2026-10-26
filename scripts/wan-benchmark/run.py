@@ -30,6 +30,7 @@ parser.add_argument("--width",type=int,default=832); parser.add_argument("--heig
 parser.add_argument("--frames",type=int,default=81)
 parser.add_argument("--disable-pinned-memory",action="store_true")
 parser.add_argument("--reference",type=Path)
+parser.add_argument("--production-graphs",type=Path,help="Directory with wan-normal-graph.json and wan-sol-graph.json exported by app tests")
 args=parser.parse_args()
 if not args.allow_gpu: raise RuntimeError("GPU benchmark requires --allow-gpu")
 root=args.root.resolve(); data=args.data.resolve()
@@ -45,11 +46,23 @@ shutil.copy2(reference,run/'input/reference.png')
 custom=root/'custom_nodes';custom.mkdir(exist_ok=True)
 for name,source in [('forja_guard',script.parents[1]/'src/MiIALocal.Core/VisualAssets/forja_guard.py'),('forja_benchmark',script/'stages.py')]:
     target=custom/name;target.mkdir(exist_ok=True);shutil.copy2(source,target/'__init__.py')
+    if name=='forja_guard' and args.production_graphs:
+        with (target/'__init__.py').open('a',encoding='utf-8') as output:
+            output.write('\n'+(script.parents[1]/'src/MiIALocal.Core/VisualAssets/forja_animation.py').read_text(encoding='utf-8'))
 config={'shared':{'base_path':str(data/'visual/models'),'diffusion_models':'diffusion_models','text_encoders':'text_encoders','vae':'vae'}}
 (root/'models.json').write_text(json.dumps(config),encoding='utf-8')
 prompt="The white-haired elf mage gently moves both hands outward, creating a bright blue magical ring. Blue particles orbit her hands. Her hair and cape sway naturally. Preserve her face, outfit, proportions and the forest background. Continuous smooth motion, fixed camera, no cuts."
 negative="static, motionless, blurry, deformed hands, extra fingers, extra limbs, changing face, changing clothes, flickering, subtitles, text, watermark, camera cuts"
 def graph(variant,prefix,seed):
+    if args.production_graphs:
+        if variant not in ['nvfp4','nvfp4-sol']:raise ValueError('Production validation only supports NVFP4')
+        g=json.loads((args.production_graphs/('wan-sol-graph.json' if variant=='nvfp4-sol' else 'wan-normal-graph.json')).read_text(encoding='utf-8'))
+        for node in g.values():
+            inputs=node['inputs']
+            if node['class_type']=='LoadImage':inputs['image']='reference.png'
+            if 'filename_prefix' in inputs:inputs['filename_prefix']=prefix
+            if 'noise_seed' in inputs:inputs['noise_seed']=seed
+        return g
     if variant=='nvfp4-sol':variant='nvfp4'
     g={}
     def n(i,kind,**inputs):g[str(i)]={'class_type':kind,'inputs':inputs}
@@ -107,6 +120,9 @@ for variant in args.variants.split(','):
     if variant=='nvfp4-sol':env['FORJA_BENCH_SOL_TOPK']='0.1'
     command=[str(engine/'python_embeded/python.exe'),'-s',str(script/'launch.py'),str(root),str(engine/'ComfyUI'),'--base-directory',str(root),'--user-directory',str(run/'user'),'--temp-directory',str(run/'temp'),'--output-directory',str(run/'output'),'--input-directory',str(run/'input'),'--extra-model-paths-config',str(root/'models.json'),'--listen','127.0.0.1','--port',str(port),'--cuda-device','0','--disable-auto-launch','--windows-standalone-build','--disable-all-custom-nodes','--whitelist-custom-nodes','forja_guard','forja_benchmark','ComfyUI-GGUF','--offline','--disable-assets','--cache-none','--disable-dynamic-vram','--reserve-vram','1.0']
     if args.disable_pinned_memory: command.append('--disable-pinned-memory')
+    if args.production_graphs:
+        command.extend(['--lowvram'])
+        command[command.index('--reserve-vram')+1]='1.5'
     def api(path,body=None):
         req=urllib.request.Request(f'http://127.0.0.1:{port}/'+path,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
         with urllib.request.urlopen(req,timeout=30) as r:return json.load(r)

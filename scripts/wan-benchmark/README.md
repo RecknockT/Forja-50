@@ -49,3 +49,6 @@ El proceso del motor tiene PID y orden de arranque registrados en `process.json`
 - [Plantilla oficial I2V 14B](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_wan2_2_14B_i2v.json)
 
 No incluir modelos, entradas del usuario ni resultados privados en commits.
+
+
+Para comprobar los flujos reales de la app, el conjunto Core exporta `wan-normal-graph.json` y `wan-sol-graph.json` en su carpeta temporal. `run.py --production-graphs RUTA` usa esos grafos y el puente de producción, también exporta GIF y arranca con LOW_VRAM/memoria fijada desactivada. Es una comprobación funcional; no mezclar sus tiempos con la comparación controlada si cambian formato, duración o exportaciones. La prueba anterior de 5B queda solo como referencia histórica; Forja ya no lo prepara.

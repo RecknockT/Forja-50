@@ -7,7 +7,8 @@ namespace MiIALocal.Core;
 public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloader)
 {
     private string Marker => Path.Combine(paths.ComfyRoot, ".forja-" + VisualCatalog.Runtime.Sha256[..16]);
-    public bool IsPrepared(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false) => !RuntimeMissing && Missing(animation, gpu, assistant, fullEdit, largeAssistant).Length == 0;
+    public bool IsPrepared(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false) => !RuntimeMissing && Missing(animation, gpu, assistant, fullEdit, largeAssistant).Length == 0
+        && (!animation || gpu?.IsRtx3090 != true || new GgufRuntime(paths, downloader).IsPrepared);
 
     /// <summary>Models that are still missing or incomplete, so the app can say which one blocks the start.</summary>
     public VisualModel[] Missing(bool animation, GpuInfo? gpu = null, bool assistant = true, bool fullEdit = false, bool largeAssistant = false)
@@ -37,6 +38,8 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
         text.AppendLine("main.py: " + (File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py")) ? "presente" : "falta"));
         text.AppendLine("Opciones: asistente=" + assistant + " · modelo Full para editar=" + fullEdit + " · asistente 12B=" + largeAssistant + " · animación=" + animation);
         text.AppendLine("Placa: " + (gpu is null ? "no detectada" : gpu.Name + " · " + gpu.FreeMiB + " MiB libres"));
+        if (animation && gpu?.IsRtx3090 == true)
+            text.AppendLine("Cargador GGUF y dependencia aislada: " + (new GgufRuntime(paths, downloader).IsPrepared ? "listos" : "faltan; pulsá Descargar y preparar"));
         foreach (var model in VisualCatalog.For(animation, gpu, assistant, fullEdit, largeAssistant))
         {
             var file = VisualCatalog.PathFor(paths, model);
@@ -59,11 +62,13 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
             if (!File.Exists(destination) || new FileInfo(destination).Length != model.Asset.Bytes)
                 required += model.Asset.Bytes!.Value - VerifiedDownloader.PersistedBytes(model.Asset, destination);
         }
+        if (animation && gpu?.IsRtx3090 == true && !new GgufRuntime(paths, downloader).IsPrepared) required += GgufRuntime.Assets.Sum(a => a.Bytes!.Value) * 3;
         return required;
     }
     public async Task PrepareAsync(VisualSettings settings, IProgress<PreparationProgress>? progress, CancellationToken ct, GpuInfo? gpu = null)
     {
         if (!settings.HiDreamLicenseAccepted) throw new InvalidOperationException("Revisá y aceptá las licencias de HiDream y los componentes visuales antes de descargar.");
+        if (settings.IncludeAnimation && !VisualCatalog.SupportsAnimation(gpu)) throw new InvalidOperationException("No se detectó una placa compatible con el perfil de animación.");
         var required = RequiredFreeBytes(settings.IncludeAnimation, gpu, settings.EnhancePrompt, settings.FullEdit, settings.LargeAssistant);
         if (new DriveInfo(Path.GetPathRoot(paths.Root)!).AvailableFreeSpace < required) throw new IOException($"Necesitás aproximadamente {required / 1e9:0.0} GB libres para esta preparación visual.");
         if (!File.Exists(Marker) || !File.Exists(paths.ComfyPython) || !File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py")))
@@ -87,6 +92,7 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
         }
         foreach (var model in VisualCatalog.For(settings.IncludeAnimation, gpu, settings.EnhancePrompt, settings.FullEdit, settings.LargeAssistant))
             await downloader.DownloadAsync(model.Asset, VisualCatalog.PathFor(paths, model), progress, ct);
+        if (settings.IncludeAnimation && gpu?.IsRtx3090 == true) await new GgufRuntime(paths, downloader).PrepareAsync(progress, ct);
         WriteConfiguration();
     }
     public async Task ImportModelsAsync(IEnumerable<string> files, IProgress<PreparationProgress>? progress, CancellationToken ct)
@@ -121,10 +127,12 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
     public void WriteConfiguration()
     {
         foreach (var dir in new[] { paths.VisualInputs, paths.VisualOutputs, paths.VisualJobs, Path.Combine(paths.VisualRoot, "user"), Path.Combine(paths.VisualRoot, "temp") }) Directory.CreateDirectory(dir);
-        AppPaths.AtomicWrite(Path.Combine(paths.VisualRoot, "models.yaml"), "forja:\n  base_path: " + JsonSerializer.Serialize(paths.VisualModels) + "\n  checkpoints: checkpoints\n  diffusion_models: diffusion_models\n  text_encoders: text_encoders\n  vae: vae\n");
+        AppPaths.AtomicWrite(Path.Combine(paths.VisualRoot, "models.yaml"), "forja:\n  base_path: " + JsonSerializer.Serialize(paths.VisualModels) + "\n  checkpoints: checkpoints\n  diffusion_models: diffusion_models\n  text_encoders: text_encoders\n  vae: vae\n  loras: loras\n");
         var destination = Path.Combine(paths.ComfyRoot, "ComfyUI", "custom_nodes", "forja_guard", "__init__.py");
         using var resource = typeof(VisualProvisioner).Assembly.GetManifestResourceStream("MiIALocal.Core.VisualAssets.forja_guard.py") ?? throw new IOException("Falta el puente visual de Forja.");
-        using var reader = new StreamReader(resource); AppPaths.AtomicWrite(destination, reader.ReadToEnd());
+        using var reader = new StreamReader(resource); using var animationResource = typeof(VisualProvisioner).Assembly.GetManifestResourceStream("MiIALocal.Core.VisualAssets.forja_animation.py") ?? throw new IOException("Falta el puente de animación.");
+        using var animationReader = new StreamReader(animationResource);
+        AppPaths.AtomicWrite(destination, reader.ReadToEnd() + "\n" + animationReader.ReadToEnd());
     }
     public static void ExtractSevenZip(string archivePath, string destination, CancellationToken ct)
     {

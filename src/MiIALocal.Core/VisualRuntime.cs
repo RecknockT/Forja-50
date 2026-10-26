@@ -22,8 +22,8 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
      "--listen", "127.0.0.1", "--port", port.ToString(), "--cuda-device", gpu.Index.ToString(),
      "--extra-model-paths-config", Path.Combine(paths.VisualRoot, "models.yaml"), "--output-directory", paths.VisualOutputs,
      "--input-directory", paths.VisualInputs, "--user-directory", Path.Combine(paths.VisualRoot, "user"),
-     "--disable-all-custom-nodes", "--whitelist-custom-nodes", "forja_guard",
-     "--offline", "--disable-assets", "--cache-none", "--disable-dynamic-vram", "--lowvram", "--reserve-vram", gpu.IsRtx3090 ? "2" : "1.5"];
+     "--disable-all-custom-nodes", "--whitelist-custom-nodes", "forja_guard", "ComfyUI-GGUF",
+     "--disable-pinned-memory", "--offline", "--disable-assets", "--cache-none", "--disable-dynamic-vram", "--lowvram", "--reserve-vram", gpu.IsRtx3090 ? "2" : "1.5"];
 
     public async Task StartAsync(VisualSettings settings, GpuInfo gpu, CancellationToken ct)
     {
@@ -79,6 +79,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             if (request.Task != VisualTask.Animation && (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || request.EnhancePrompt != promptAssistant || request.EnhancePrompt && request.LargeAssistant != largeAssistant || (request.Task == VisualTask.Edit && request.FullEdit != fullEdit))) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             if (prepared is not null && !request.EnhancePrompt) prepared = null;
+            if (request.Task == VisualTask.Animation && request.AnimationGguf != (activeGpu?.IsRtx3090 == true)) throw new InvalidOperationException("El perfil de animación no coincide con la placa. Volvé a iniciar la IA.");
             if (request.Task == VisualTask.Animation)
                 await new VisualProvisioner(paths, new VerifiedDownloader(http)).VerifyModelsAsync(true, ct, activeGpu, promptAssistant, false, largeAssistant);
             var input = prepared?.StagedReference ?? StageReference(reference);

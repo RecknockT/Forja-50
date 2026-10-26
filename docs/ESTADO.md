@@ -1,6 +1,16 @@
-﻿# Estado verificable de Forja 50
+# Estado verificable de Forja 50
 
-22 de octubre de 2026 · desarrollo 0.4.16.
+26 de octubre de 2026 · desarrollo 0.4.17.
+
+## Wan A14B por placa · 0.4.17
+
+- Retirado Wan 2.2 5B del perfil activo; su checkpoint y VAE quedan identificados como modelos anteriores para borrarlos desde almacenamiento. El codificador UMT5 compartido se conserva. No se borran creaciones ni referencias al actualizar.
+- RTX 5080 / 5070 Ti: LightWan2.2 A14B NVFP4, expertos high/low fijados con SHA-256. Un solo perfil de pesos, dos procesamientos: normal y Sol experimental (top-k 10%, tail desactivado), seleccionables antes de cada trabajo. Sol es el operador compilado de Comfy Kitchen; no el runtime externo LightX2V ni su Sage2.
+- RTX 3090: selección automática de GGUF Q4_K_S de QuantStack y los dos LoRA LightX2V, 4 pasos, CFG 1, shift 5; Sol desactivado. El cargador ComfyUI-GGUF y gguf 0.17.1 se descargan con tamaño/revisión/SHA fijados y dependencia aislada, sin pip ni cambios en paquetes compartidos. No se realizaron mediciones físicas de 3090.
+- Imagen inicial obligatoria en ambos perfiles. VAE Wan 2.1, no el VAE de 5B. NVFP4: 4 pasos Euler/simple, CFG 1, shift 7. Dos etapas: 0–2 con ruido y 2–4 continuando el latente. Un experto completo en VRAM por etapa; se descarga antes de cargar el siguiente. Si no cabe, se informa el error; no se realiza transferencia continua de capas a RAM. Esto no elimina el uso de RAM ni garantiza que Windows nunca pagine.
+- El codificador de animación se carga en GPU explícitamente, incluso con LOW_VRAM. Se desactiva la memoria fijada para reducir presión de RAM. Producción y pruebas comparten el nodo de etapas; restaura la política de memoria y libera el experto incluso ante error.
+- Verificación física adicional en RTX 5080: ambos flujos de la app terminaron con GIF y MP4 (primer trabajo normal 66,4 s; Sol 50,1 s, formatos/duraciones distintos, por lo que no son una comparación de rendimiento). La comparación controlada anterior, con tres repeticiones por variante, está en [WAN-BENCHMARK-RTX5080.md](WAN-BENCHMARK-RTX5080.md).
+- Pruebas: conjunto Core, compilación Desktop, ventanas de cierre/configuración/perfiles/modos/cuenta/almacenamiento, prueba del puente y del manejo de memoria ante errores; descarga e instalación real del cargador GGUF en carpeta aislada, sin cargar un modelo. Inferencia física en 5070 Ti y 3090 pendiente.
 
 ## Conocimiento implícito al editar · 0.4.16
 
