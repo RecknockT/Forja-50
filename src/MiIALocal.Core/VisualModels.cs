@@ -14,6 +14,7 @@ public sealed class VisualSettings
     /// <summary>Retained for old settings; the only active assistant is now Gemma 4 12B.</summary>
     public bool LargeAssistant { get; set; } = true;
     public bool IncludeAnimation { get; set; } = true;
+    public bool AnimationHighDetail { get; set; }
     public bool AnimationSol { get; set; } = true;
     public bool WebReferencesEnabled { get; set; } = true;
     public int Width { get; set; } = 2048;
@@ -116,8 +117,8 @@ public sealed record VisualRequest(VisualTask Task, string Prompt, int Width, in
         if (!Enum.IsDefined(Task) || string.IsNullOrWhiteSpace(Prompt) || Prompt.Length > 6000) throw new InvalidDataException("Escribí una descripción de hasta 6000 caracteres.");
         if (Task == VisualTask.Animation)
         {
-            if (Width < 256 || Height < 256 || Width > 832 || Height > 832 || Width % 32 != 0 || Height % 32 != 0)
-                throw new InvalidDataException("La resolución supera el perfil visual o no es múltiplo de 32.");
+            if (Width < 256 || Height < 256 || Width > 832 || Height > 832 || Width % 16 != 0 || Height % 16 != 0)
+                throw new InvalidDataException("La resolución de animación supera el perfil o no es múltiplo de 16.");
         }
         else if (Width < 256 || Height < 256 || Width > 3104 || Height > 3104 || Width % 32 != 0 || Height % 32 != 0 || (long)Width * Height > 2048L * 2048)
             throw new InvalidDataException("La resolución supera el perfil visual o no es múltiplo de 32.");

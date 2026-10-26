@@ -25,6 +25,7 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox size = new() { ItemsSource = new[] { "Cuadrada · 1024 × 1024", "Horizontal · 1024 × 768", "Vertical · 768 × 1024" }, SelectedIndex = 0 };
     private readonly ComboBox duration = new() { ItemsSource = new[] { "3 segundos", "5 segundos" }, SelectedIndex = 0 };
     private readonly TextBox seed = new() { MinWidth = 180, MaxLength = 16 };
+    private readonly ComboBox animationQuality = new() { ItemsSource = new[] { "Detalle estándar", "Más detalle · experimental (más VRAM y tiempo)" }, SelectedIndex = 0 };
     private readonly ComboBox animationMode = new() { ItemsSource = new[] { "Rápido · NVFP4 + Sol (experimental)", "Normal · NVFP4" }, SelectedIndex = 0 };
     private readonly CheckBox imageModel = new() { Content = "HiDream-O1 Full · crear y editar imágenes (principal · 8,1 GB)", IsChecked = true, IsEnabled = false, ToolTip = "Es el generador principal del modo visual y siempre está seleccionado." };
     private readonly CheckBox animation = new() { Content = "Wan 14B · animaciones y GIF (perfil automático por GPU)" };
@@ -141,6 +142,9 @@ public sealed class VisualPane : UserControl
         example.Click += (_, _) => prompt.Text = task.SelectedIndex switch { 1 => "Cambiá solo el brazo izquierdo a rojo. Conservá los demás detalles.", 2 => "El personaje saluda suavemente con la mano. Cámara fija.", _ => "Un pequeño robot blanco en un taller acogedor, iluminación cálida y estilo de ilustración 3D." }; editor.Children.Add(example);
         editor.Children.Add(new TextBlock { Text = "Formato", FontWeight = FontWeights.SemiBold, Margin = new(0, 6, 0, 8) });
         var options = new WrapPanel(); options.Children.Add(size); options.Children.Add(duration); editor.Children.Add(options); editor.Children.Add(imageQuality); imageQuality.Margin = new(0, 8, 0, 0);
+        duration.SelectionChanged += (_, _) => Refresh(); size.SelectionChanged += (_, _) => Refresh();
+        editor.Children.Add(animationQuality); animationQuality.Margin = new(0, 8, 0, 0);
+        animationQuality.SelectionChanged += (_, _) => { settings().Visual.AnimationHighDetail = animationQuality.SelectedIndex == 1; Save(); Refresh(); };
         editor.Children.Add(animationHint);
         var advanced = new StackPanel(); advanced.Children.Add(new TextBlock { Text = "Semilla: dejala vacía para variar cada resultado." }); advanced.Children.Add(seed);
         advanced.Children.Add(animationMode);
@@ -223,7 +227,7 @@ public sealed class VisualPane : UserControl
         webReferences.IsChecked = visual.WebReferencesEnabled;
         size.SelectedIndex = visual.Width > visual.Height ? 1 : visual.Height > visual.Width ? 2 : 0;
         duration.SelectedIndex = visual.AnimationFrames == 121 ? 1 : 0;
-        animationMode.SelectedIndex = visual.AnimationSol ? 0 : 1;
+        animationMode.SelectedIndex = visual.AnimationSol ? 0 : 1; animationQuality.SelectedIndex = visual.AnimationHighDetail ? 1 : 0;
         UpdatePackage(); LoadGallery(); Refresh();
     }
     public void SetAvailable(bool available, bool compatible)
@@ -247,6 +251,9 @@ public sealed class VisualPane : UserControl
         return "Falta descargar: " + detail + "." + hint;
     }
     private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
+    private (int Width, int Height) AnimationCanvas() => size.SelectedIndex == 0 && referencePixels is { } frame
+        ? VisualAnimation.ForReference(frame.Width, frame.Height, settings().Visual.AnimationHighDetail)
+        : VisualAnimation.Dimensions(Math.Max(0, size.SelectedIndex - 1), settings().Visual.AnimationHighDetail);
     private void Refresh()
     {
         var prepared = IsPrepared;
@@ -269,11 +276,13 @@ public sealed class VisualPane : UserControl
         if (animationFormats != (task.SelectedIndex == 2))
         {
             var format = Math.Max(0, size.SelectedIndex); animationFormats = task.SelectedIndex == 2;
-            size.ItemsSource = animationFormats ? new[] { "Cuadrada · 576 × 576", "Horizontal · 768 × 448", "Vertical · 448 × 768" } : new[] { "Cuadrada · 1024 × 1024", "Horizontal · 1024 × 768", "Vertical · 768 × 1024" };
-            size.SelectedIndex = format;
+            size.ItemsSource = animationFormats ? new[] { "Automático · proporciones de la imagen", "Cuadrada", "Horizontal", "Vertical" } : new[] { "Cuadrada · 1024 × 1024", "Horizontal · 1024 × 768", "Vertical · 768 × 1024" };
+            size.SelectedIndex = animationFormats ? 0 : Math.Clamp(format - 1, 0, 2);
         }
+        animationQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed; animationQuality.IsEnabled = available;
         animationHint.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
-        animationHint.Text = reference is null ? "Wan 14B necesita una imagen inicial. Elegí una de tu PC o creala primero en Crear imagen. Forja elige NVFP4 para RTX 50 y GGUF para RTX 3090." : "La imagen será el primer fotograma y se ajustará sin recortarla. Describí qué se desplaza, hacia dónde y cómo se mueve la cámara. El final no tiene por qué coincidir con el inicio del GIF. La opción de 5 segundos es experimental y requiere más memoria.";
+        animationHint.Text = reference is null ? "Wan 14B necesita una imagen inicial. Elegí una de tu PC o creala primero en Crear imagen. Forja elige NVFP4 para RTX 50 y GGUF para RTX 3090." : "Automático adapta el lienzo a las proporciones de tu imagen. Los formatos fijos recortan los bordes para llenar el cuadro, sin franjas repetidas. Describí el movimiento y la cámara. Más detalle y 5 segundos requieren más memoria; compará también NVFP4 normal si Sol cambia detalles.";
+        if (task.SelectedIndex == 2 && reference is not null) { var canvas = AnimationCanvas(); animationHint.Text = $"Salida: {canvas.Width} × {canvas.Height} · {(duration.SelectedIndex == 1 ? 5 : 3)} segundos. " + animationHint.Text; }
         duration.Visibility = task.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         open.IsEnabled = export.IsEnabled = resultFile is not null && File.Exists(resultFile);
         generate.Content = task.SelectedIndex switch { 1 => "Aplicar cambio", 2 => "Crear animación", _ => "Crear imagen" };
@@ -328,7 +337,8 @@ public sealed class VisualPane : UserControl
             var (width, height) = size.SelectedIndex switch { 1 => (side, side * 3 / 4), 2 => (side * 3 / 4, side), _ => (side, side) };
             var kind = (VisualTask)task.SelectedIndex;
             var frames = duration.SelectedIndex == 1 ? 121 : 73;
-            if (kind == VisualTask.Animation) (width, height) = VisualAnimation.Dimensions(size.SelectedIndex);
+            if (kind == VisualTask.Animation)
+                (width, height) = AnimationCanvas();
             if (kind != VisualTask.Animation) { visual.Width = width; visual.Height = height; }
             visual.AnimationFrames = frames; visual.AnimationSteps = 4; Save();
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
@@ -507,8 +517,8 @@ public sealed class VisualPane : UserControl
         clear.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         if (reference is not null || task.SelectedIndex != 0 || !File.Exists(file)) throw new Exception("Imagen nueva no separa la referencia o borró la creación.");
         if (gallery.Visibility != Visibility.Collapsed || emptyGallery.Visibility != Visibility.Visible || creationHint.Visibility != Visibility.Visible) throw new Exception("El estado inicial no explica cómo empezar.");
-        task.SelectedIndex = 2; size.SelectedIndex = 2; Refresh();
-        if (!animationFormats || !size.IsEnabled || !size.Items[2].ToString()!.Contains("448 × 768") || animationHint.Visibility != Visibility.Visible) throw new Exception("La orientación de la animación no se puede elegir.");
+        task.SelectedIndex = 2; size.SelectedIndex = 3; Refresh();
+        if (!animationFormats || !size.IsEnabled || !size.Items[3].ToString()!.Contains("Vertical") || animationHint.Visibility != Visibility.Visible) throw new Exception("La orientación de la animación no se puede elegir.");
         if (reviewPreparedPrompt.Visibility != (settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed)) throw new Exception("La revisión de la descripción no sigue al asistente al animar.");
         task.SelectedIndex = 0; Refresh();
         if (animationFormats || !size.Items[2].ToString()!.Contains("768 × 1024")) throw new Exception("La animación alteró los formatos de imagen.");

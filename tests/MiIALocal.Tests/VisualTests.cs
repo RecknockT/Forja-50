@@ -7,6 +7,25 @@ static class VisualTests
 {
     public static async Task RunAsync(string root, Action<bool, string> assert, Func<string, Func<Task>, Task> test)
     {
+        await test("Animación: proporciones automáticas y más detalle sin aumentar pasos", () =>
+        {
+            assert(VisualAnimation.ForReference(2048, 1536) == (640, 480), "La referencia 4:3 no conserva su encuadre estándar.");
+            assert(VisualAnimation.ForReference(2048, 1536, true) == (768, 576), "No se aplica el aumento de detalle para 4:3.");
+            foreach (var (w, h) in new[] { (2048, 1536), (1536, 2048), (2560, 1440), (1440, 2560), (1024, 1024) })
+            foreach (var high in new[] { false, true })
+            {
+                var canvas = VisualAnimation.ForReference(w, h, high);
+                assert(canvas.Width % 16 == 0 && canvas.Height % 16 == 0 && canvas.Width <= 832 && canvas.Height <= 832
+                    && canvas.Width * canvas.Height <= (high ? 460800 : 331776), "Lienzo fuera del presupuesto de animación.");
+                assert(Math.Abs((double)canvas.Width / canvas.Height / ((double)w/h) - 1) < .02, "Se impone un formato distinto al de la referencia.");
+                new VisualRequest(VisualTask.Animation, "camina", canvas.Width, canvas.Height, 42).Validate();
+            }
+            var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Animation, "Saluda", 768, 576, 42), new string('a', 32), "ref.png"));
+            assert(graph.GetProperty("21").GetProperty("inputs").GetProperty("fit_mode").GetString() == "animation", "La animación mantiene franjas de relleno.");
+            var still = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "rojo", 2048, 2048, 42), new string('a', 32), "ref.png"));
+            assert(!still.GetProperty("21").GetProperty("inputs").TryGetProperty("fit_mode", out _), "La corrección de animación cambia el encuadre de edición.");
+            return Task.CompletedTask;
+        });
         await test("Preparación visual: los tres modelos vienen seleccionados sin aceptar licencias", () =>
         {
             var fresh = new VisualSettings();

@@ -58,18 +58,28 @@ class ForjaSaveGif:
 class ForjaFitReference:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"image": ("IMAGE",), "width": ("INT", {"min": 256, "max": 3104}), "height": ("INT", {"min": 256, "max": 3104})}}
+        return {"required": {"image": ("IMAGE",), "width": ("INT", {"min": 256, "max": 3104}), "height": ("INT", {"min": 256, "max": 3104})}, "optional": {"fit_mode": (["preserve", "animation"], {"default": "preserve"})}}
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "fit"
     CATEGORY = "Forja"
 
-    def fit(self, image, width, height):
+    def fit(self, image, width, height, fit_mode="preserve"):
         import torch
         import torch.nn.functional as functional
         if width < 256 or height < 256 or width > 3104 or height > 3104:
             raise ValueError("Unsupported reference dimensions")
-        # Letterbox the entire initial frame instead of the Wan node's center crop.
         pixels = image[:1, :, :, :3].movedim(-1, 1).cpu()
+        if fit_mode == "animation":
+            # The automatic canvas follows the source aspect. Fixed formats use a
+            # centered crop, never stretched/replicated strips as conditioning.
+            scale = max(width / pixels.shape[-1], height / pixels.shape[-2])
+            resized_width = max(width, round(pixels.shape[-1] * scale))
+            resized_height = max(height, round(pixels.shape[-2] * scale))
+            pixels = functional.interpolate(pixels, size=(resized_height, resized_width), mode="bicubic", align_corners=False, antialias=True)
+            left = (resized_width - width) // 2; top = (resized_height - height) // 2
+            return (pixels[:, :, top:top+height, left:left+width].clamp(0, 1).movedim(1, -1),)
+        if fit_mode != "preserve": raise ValueError("Unsupported reference fit mode")
+        # Image editing keeps its existing full-frame letterboxing policy.
         scale = min(width / pixels.shape[-1], height / pixels.shape[-2])
         resized_width = max(1, min(width, round(pixels.shape[-1] * scale)))
         resized_height = max(1, min(height, round(pixels.shape[-2] * scale)))

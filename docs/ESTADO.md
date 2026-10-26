@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-26 de octubre de 2026 · desarrollo 0.4.20.
+26 de octubre de 2026 · desarrollo 0.4.21.
+
+## Animación sin franjas de relleno · 0.4.21
+
+- Causa confirmada: el ajuste anterior ampliaba la referencia conservando su marco y rellenaba con píxeles replicados para imponer otro formato. Wan recibía esas franjas como parte de la imagen. El problema no era ruido aleatorio del borde.
+- Animación selecciona Automático por defecto: calcula un lienzo cercano a las proporciones de la referencia, en múltiplos de 16 admitidos por Wan I2V. El modo de ajuste propio de animación llena el lienzo con interpolación bicúbica y recorte central cuando hace falta; no utiliza relleno replicado. Edición y creación conservan su ajuste anterior.
+- Para una referencia 4:3: estándar 640×480; Más detalle experimental 768×576. Respecto de un video anterior de 768×448, el preset de detalle tiene un 28,6% más de píxeles. Los formatos fijos también recortan en lugar de añadir franjas. La UI muestra el tamaño efectivo.
+- Presupuestos de hasta 331.776 píxeles estándar y 460.800 experimental, con lados hasta 832. No se aumenta el número de pasos del modelo destilado. Más detalle y 121 fotogramas requieren más memoria y tiempo; no se garantizó su pico de VRAM en esta revisión.
+- Pruebas: límites, proporciones, selección en la ventana y ajuste real con tensores en CPU (gradiente sin columnas repetidas), sin iniciar inferencia ni modificar el motor abierto del usuario. La evaluación de calidad debe comparar el MP4; GIF añade su reducción de paleta.
 
 ## Preparación y arranque más claros · 0.4.20
 

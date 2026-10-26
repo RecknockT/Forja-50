@@ -1,4 +1,4 @@
-﻿"""Exercise the actual embedded bridge without ComfyUI, CUDA or model weights."""
+"""Exercise the actual embedded bridge without ComfyUI, CUDA or model weights."""
 import asyncio
 import importlib.util
 import os
@@ -114,6 +114,11 @@ if "--real-fit" in sys.argv:
     limits = bridge.ForjaFitReference.INPUT_TYPES()["required"]
     assert limits["width"][1]["max"] >= 3104 and limits["height"][1]["max"] >= 3104, "El nodo limita el lienzo entrenado de HiDream y Comfy rechaza el grafo"
     assert bridge.ForjaFitReference().fit(image, 2560, 1440)[0].shape == (1, 1440, 2560, 3)
+    gradient = torch.linspace(0, 1, 48).view(1, 1, 48, 1).expand(1, 32, 48, 3)
+    animated = bridge.ForjaFitReference().fit(gradient, 256, 256, "animation")[0]
+    assert animated.shape == (1, 256, 256, 3)
+    assert torch.all(torch.diff(animated[0, 128, :, 0]) > 0), "La animación repite columnas de relleno"
+    assert animated[0, 128, 0, 0] > .05 and animated[0, 128, -1, 0] < .95, "El formato fijo no recorta el exceso"
     assert not torch.cuda.is_initialized()
     print("PASS referencia real: marco completo y orientación sin recorte; CPU sin CUDA")
 

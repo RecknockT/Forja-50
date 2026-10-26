@@ -47,7 +47,7 @@ El único asistente visual es **Gemma 4 12B INT8** (12,06 GB). Podés desactivar
 
 Crear y editar usan el mismo Full: **40 pasos, CFG 5, DPM++ 2M SDE y suavizado de costuras**. Si elegís una referencia, se conserva su encuadre en una resolución entrenada cercana a 4 MP. Una referencia cercana del personaje suele ser más útil que una portada o un paisaje amplio. Las resoluciones inferiores a 2048 son opciones de prueba y pueden perder fidelidad.
 
-Para **Animar**, elegí una imagen inicial y describí su movimiento. Se conserva Wan A14B: NVFP4 normal/Sol experimental en RTX 50 y GGUF en 3090. El asistente puede preparar también la descripción del movimiento. El panel muestra la descarga exacta según tu placa y las opciones; lo descargado se reutiliza y los parciales se conservan al pausar.
+Para **Animar**, elegí una imagen inicial y describí su movimiento. Usá **Automático** para adaptar el lienzo a sus proporciones sin franjas de relleno; los formatos fijos recortan el encuadre. La opción **Más detalle** aumenta la resolución y es experimental: empezá con 3 segundos y comprobá memoria y tiempo. El tamaño real aparece debajo de los controles. Se conserva Wan A14B: NVFP4 normal/Sol experimental en RTX 50 y GGUF en 3090. El asistente puede preparar también la descripción del movimiento. El panel muestra la descarga exacta según tu placa y las opciones; lo descargado se reutiliza y los parciales se conservan al pausar.
 
 Dev FP8/BF16 y Gemma E4B quedan en **Modelos anteriores**, con borrado individual en Administrar almacenamiento. Tus creaciones se conservan. La prueba física del perfil unificado está pendiente; no hay tiempos ni consumo garantizados. [Configuración y plan de pruebas](HIDREAM-MIGRACION.md).
 

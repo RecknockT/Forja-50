@@ -68,7 +68,7 @@ public static class VisualWorkflows
             Node("3", "VAELoader", ("vae_name", VisualCatalog.WanVae.Asset.FileName));
             Node("4", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.Prompt(preparedPrompt ?? r.Prompt, true)));
             Node("5", "CLIPTextEncode", ("clip", Link("2")), ("text", VisualAnimation.NegativePrompt));
-            Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
+            Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height), ("fit_mode", "animation"));
             Node("6", "WanImageToVideo", ("positive", Link("4")), ("negative", Link("5")), ("vae", Link("3")),
                 ("start_image", Link("21")), ("width", r.Width), ("height", r.Height), ("length", r.Frames), ("batch_size", 1));
             Node("7", "ModelSamplingSD3", ("model", Link("1")), ("shift", r.AnimationGguf ? 5.0 : 7.0));

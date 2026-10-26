@@ -89,6 +89,8 @@ jobs:
           RELEASE_NOTES: |
             Forja 50: version de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) y RTX 3090 (24 GB), con 32 GB de RAM.
 
+            0.4.21: corrige franjas laterales en animacion eliminando relleno de bordes replicados. Formato automatico segun referencia, resolucion visible y opcion Mas detalle experimental. Pruebas de ajuste real en CPU; sin medicion nueva de inferencia/VRAM.
+
             0.4.20: preparacion visual simplificada con tres modelos seleccionados de inicio, consentimiento explicito, boton de preparacion destacado y panel replegado cuando todo lo elegido esta listo. Iniciar IA se destaca solo con perfil preparado y memoria suficiente. Sin inferencia en CI.
 
             0.4.19: perfil visual simplificado a HiDream-O1 Full FP8 para crear y editar, y Gemma 4 12B INT8 como unico asistente opcional. Receta Full en ambas acciones; Dev y E4B quedan como modelos anteriores para limpieza individual. Sin inferencia en esta publicacion; validacion fisica pendiente.
