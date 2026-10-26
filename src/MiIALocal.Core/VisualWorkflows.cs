@@ -12,11 +12,10 @@ public static class VisualWorkflows
         { var values = inputs.ToDictionary(x => x.Item1, x => x.Item2); graph[id] = new { class_type = type, inputs = values }; return values; }
         object[] Link(string id, int slot = 0) => [id, slot];
         var animation = r.Task == VisualTask.Animation;
-        var fullEdit = !animation && r.Task == VisualTask.Edit && r.FullEdit;
         if (reference is not null) Node("20", "LoadImage", ("image", reference));
         if (!animation)
         {
-            Node("1", "CheckpointLoaderSimple", ("ckpt_name", (fullEdit ? VisualCatalog.HiDreamFull : r.HighPrecision ? VisualCatalog.HiDreamBf16 : VisualCatalog.HiDream).Asset.FileName));
+            Node("1", "CheckpointLoaderSimple", ("ckpt_name", VisualCatalog.HiDreamFull.Asset.FileName));
             if (reference is not null)
                 Node("21", "ForjaFitReference", ("image", Link("20")), ("width", r.Width), ("height", r.Height));
             if (preparedPrompt is not null)
@@ -36,8 +35,7 @@ public static class VisualWorkflows
             }
             // The Full checkpoint is not distilled: it needs a real negative branch for CFG 5 and the
             // recipe of the official Full template (40 steps, dpmpp_2m_sde_gpu, seam smoothing).
-            if (fullEdit) Node("5", "CLIPTextEncode", ("clip", Link("1", 1)), ("text", ""));
-            else Node("5", "ConditioningZeroOut", ("conditioning", Link("4")));
+            Node("5", "CLIPTextEncode", ("clip", Link("1", 1)), ("text", ""));
             Node("6", "EmptyHiDreamO1LatentImage", ("width", r.Width), ("height", r.Height), ("batch_size", 1));
             var positive = Link("4"); var negative = Link("5");
             if (reference is not null)
@@ -45,22 +43,14 @@ public static class VisualWorkflows
                 Node("23", "HiDreamO1ReferenceImages", ("positive", positive), ("negative", negative), ("images.image_1", Link("21")));
                 positive = Link("23"); negative = Link("23", 1);
             }
-            Node("7", "ModelNoiseScale", ("model", Link("1")), ("noise_scale", fullEdit ? 8.0 : 7.6));
-            var model = Link("7");
-            if (fullEdit)
-            {
-                Node("10", "HiDreamO1PatchSeamSmoothing", ("model", Link("7")), ("start_percent", 0.8), ("end_percent", 1.0),
-                    ("pattern", "single_shift"), ("passes", "ramp_2_4"), ("blend", "median"), ("strength", 1.0));
-                model = Link("10");
-            }
-            Node("8", "BasicScheduler", ("model", model), ("scheduler", "normal"), ("steps", fullEdit ? 40 : 28), ("denoise", 1.0));
-            // Dev editing follows HiDream's flow-match scheduler: plain Euler, without the per-step noise
-            // re-injection of the distilled creation path, which produced noise on an edit.
-            if (fullEdit) Node("9", "KSamplerSelect", ("sampler_name", "dpmpp_2m_sde_gpu"));
-            else if (reference is not null) Node("9", "KSamplerSelect", ("sampler_name", "euler"));
-            else Node("9", "SamplerLCM", ("s_noise", 1.0), ("s_noise_end", 1.0), ("noise_clip_std", 2.5));
+            Node("7", "ModelNoiseScale", ("model", Link("1")), ("noise_scale", 8.0));
+            Node("10", "HiDreamO1PatchSeamSmoothing", ("model", Link("7")), ("start_percent", 0.8), ("end_percent", 1.0),
+                ("pattern", "single_shift"), ("passes", "ramp_2_4"), ("blend", "median"), ("strength", 1.0));
+            var model = Link("10");
+            Node("8", "BasicScheduler", ("model", model), ("scheduler", "normal"), ("steps", 40), ("denoise", 1.0));
+            Node("9", "KSamplerSelect", ("sampler_name", "dpmpp_2m_sde_gpu"));
             Node("11", "SamplerCustom", ("model", model), ("positive", positive), ("negative", negative), ("latent_image", Link("6")),
-                ("add_noise", true), ("noise_seed", r.Seed), ("cfg", fullEdit ? 5.0 : 1.0), ("sampler", Link("9")), ("sigmas", Link("8")));
+                ("add_noise", true), ("noise_seed", r.Seed), ("cfg", 5.0), ("sampler", Link("9")), ("sigmas", Link("8")));
         }
         else
         {

@@ -28,11 +28,9 @@ public sealed class VisualPane : UserControl
     private readonly ComboBox animationMode = new() { ItemsSource = new[] { "Rápido · NVFP4 + Sol (experimental)", "Normal · NVFP4" }, SelectedIndex = 0 };
     private readonly CheckBox animation = new() { Content = "Descargar Wan 14B NVFP4 para animaciones y GIF (perfil automático por GPU)" };
     private readonly CheckBox license = new() { Content = "Revisé y acepto las licencias del modo visual" };
-    private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un asistente visual local (8,09 GB adicionales)" };
+    private readonly CheckBox enhancePrompt = new() { Content = "Mejorar mis pedidos con un Gemma 4 12B (asistente visual · 12,1 GB)" };
     private readonly CheckBox reviewPreparedPrompt = new() { Content = "Revisar y editar la descripción preparada antes de generar", FontSize = 12 };
-    private readonly CheckBox fullEdit = new() { Content = "Editar con el modelo Full (recomendado por su autor; 8,1 GB y más lento)", FontSize = 12 };
-    private readonly CheckBox largeAssistant = new() { Content = "Asistente grande · Gemma 4 12B INT8 (mejor calidad; 11,2 GB y más lento)", FontSize = 12 };
-    private readonly Button importModels = new() { Content = "Usar modelos HiDream ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly Button importModels = new() { Content = "Usar modelos ya descargados", HorizontalAlignment = HorizontalAlignment.Left };
     private readonly ComboBox imageQuality = new() { ItemsSource = new[] { "Prueba rápida · 1024 píxeles (menos fiel)", "Equilibrada · 1536 píxeles", "Recomendada · 2048 píxeles" }, SelectedIndex = 2 };
     private readonly CheckBox webReferences = new() { Content = "Buscar personajes reconocibles en Wikipedia" };
     private readonly TextBlock animationHint = new() { Foreground = Brushes.LightGray, Margin = new(0, 8, 0, 10), Visibility = Visibility.Collapsed };
@@ -77,7 +75,7 @@ public sealed class VisualPane : UserControl
     public bool IsActive => runtime.HasProcess;
     public bool IsPreparing => preparing;
     public bool IsPrepared => provisioner.IsPrepared(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant);
-    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nCrear: HiDream-O1 Dev · {(gpu()?.IsRtx3090 == true ? "BF16" : "FP8 escalado")} · 28 pasos · LCM\nEditar: {(settings().Visual.FullEdit ? "HiDream-O1 Full · FP8 · 40 pasos · CFG 5 · costuras" : "Dev · Euler de flujo · 28 pasos")}\nAsistente Gemma 4 {(settings().Visual.LargeAssistant ? "12B" : "E4B")} INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión y edición previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? gpu()?.IsRtx3090 == true ? "Wan 2.2 A14B · GGUF Q4_K_S · LightX2V · 4 pasos\n" : $"Wan 2.2 A14B · NVFP4 · 4 pasos · {(settings().Visual.AnimationSol ? "Sol experimental" : "Normal")}\n" : "Animaciones: descarga opcional\n")}1 imagen / trabajo a la vez\nApoyo en RAM según memoria libre\nSin Qwen de programación ni OpenCode\nSolo conexión local protegida\nHiDream: validación en curso";
+    public string Summary => $"Imágenes y animación · independiente\nComfyUI {VisualCatalog.ComfyVersion}\nCrear y editar: HiDream-O1 Full · FP8\n40 pasos · CFG 5 · DPM++ 2M SDE\nSuavizado de costuras activado\nGemma 4 12B INT8: {(settings().Visual.EnhancePrompt ? (settings().Visual.ReviewPreparedPrompt ? "activado, con revisión previa" : "activado, por etapas") : "desactivado")}\n{(settings().Visual.IncludeAnimation ? gpu()?.IsRtx3090 == true ? "Wan 2.2 A14B · GGUF Q4_K_S · LightX2V · 4 pasos\n" : $"Wan 2.2 A14B · NVFP4 · 4 pasos · {(settings().Visual.AnimationSol ? "Sol experimental" : "Normal")}\n" : "Animaciones: descarga opcional\n")}1 trabajo a la vez\nAsistente y generador se cargan por turnos\nApoyo en RAM según memoria libre\nSolo conexión local protegida\nPerfil unificado: prueba física pendiente";
 
 
     public VisualPane(AppPaths paths, Func<AppSettings> settings, HttpClient http, Func<GpuInfo?> gpu,
@@ -95,7 +93,6 @@ public sealed class VisualPane : UserControl
         preparation.Children.Add(animation); animation.Margin = new(0, 0, 0, 10);
         preparation.Children.Add(new TextBlock { Text = "Descarga directa sin cuenta ni token. HiDream incluye su procesamiento de texto e imagen; el asistente es opcional. Los modelos anteriores se conservan.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, Margin = new(0, 0, 0, 12) });
         preparation.Children.Add(enhancePrompt); enhancePrompt.Margin = new(0, 0, 0, 6);
-        preparation.Children.Add(largeAssistant); largeAssistant.Margin = new(0, 0, 0, 10);
         preparation.Children.Add(importModels);
         var licenses = new Button { Content = "Leer licencias", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10) };
         licenses.Click += (_, _) => ShowLicenses(); preparation.Children.Add(licenses);
@@ -136,7 +133,6 @@ public sealed class VisualPane : UserControl
         useIdentity.Margin = new(0, 0, 0, 10); editor.Children.Add(useIdentity);
         editor.Children.Add(new TextBlock { Text = "Tu descripción", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 8) }); prompt.MinHeight = 100; editor.Children.Add(prompt);
         reviewPreparedPrompt.Margin = new(0, 8, 0, 0); editor.Children.Add(reviewPreparedPrompt);
-        fullEdit.Margin = new(0, 8, 0, 0); editor.Children.Add(fullEdit);
         generate.HorizontalAlignment = HorizontalAlignment.Left; generate.MinWidth = 180; generate.Margin = new(0, 12, 0, 0); editor.Children.Add(generate); editor.Children.Add(creationHint);
         example.Click += (_, _) => prompt.Text = task.SelectedIndex switch { 1 => "Cambiá solo el brazo izquierdo a rojo. Conservá los demás detalles.", 2 => "El personaje saluda suavemente con la mano. Cámara fija.", _ => "Un pequeño robot blanco en un taller acogedor, iluminación cálida y estilo de ilustración 3D." }; editor.Children.Add(example);
         editor.Children.Add(new TextBlock { Text = "Formato", FontWeight = FontWeights.SemiBold, Margin = new(0, 6, 0, 8) });
@@ -170,28 +166,16 @@ public sealed class VisualPane : UserControl
         enhancePrompt.Click += (_, _) =>
         {
             settings().Visual.EnhancePrompt = enhancePrompt.IsChecked == true; Save(); UpdatePackage(); Refresh();
-            if (enhancePrompt.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true)) status("El asistente necesita 8,09 GB. Pulsá Descargar y preparar antes de iniciar la IA; lo descargado se reutiliza.");
+            if (enhancePrompt.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true)) status("El asistente Gemma 4 12B necesita 12,1 GB. Pulsá Descargar y preparar antes de iniciar la IA; lo descargado se reutiliza.");
             else if (enhancePrompt.IsChecked != true) status("Asistente desactivado: HiDream recibe tu descripción tal cual y conviene escribirla en inglés. Los archivos descargados se conservan.");
         };
         reviewPreparedPrompt.Click += (_, _) => { settings().Visual.ReviewPreparedPrompt = reviewPreparedPrompt.IsChecked == true; Save(); };
-        largeAssistant.Click += (_, _) =>
-        {
-            settings().Visual.LargeAssistant = largeAssistant.IsChecked == true; Save(); UpdatePackage(); Refresh();
-            if (largeAssistant.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true, true, true)) status("El asistente grande necesita 11,2 GB. Pulsá Descargar y preparar antes de iniciar la IA; el E4B se conserva.");
-            else status(largeAssistant.IsChecked == true ? "La descripción usa Gemma 4 12B (mejor calidad, ~2-3× más lento)." : "La descripción vuelve a Gemma 4 E4B, el que usa la plantilla oficial de ComfyUI.");
-        };
-        fullEdit.Click += (_, _) =>
-        {
-            settings().Visual.FullEdit = fullEdit.IsChecked == true; Save(); UpdatePackage(); Refresh();
-            if (fullEdit.IsChecked == true && !provisioner.IsPrepared(false, gpu(), true, true)) status("La edición con el modelo Full necesita 8,1 GB. Pulsá Descargar y preparar antes de iniciar la IA; lo descargado se reutiliza.");
-            else status(fullEdit.IsChecked == true ? "La edición usa el modelo Full: 40 pasos, CFG 5 y suavizado de costuras." : "La edición vuelve a Dev: 28 pasos con Euler de flujo. El autor recomienda el modelo Full para editar.");
-        };
         animation.Click += (_, _) => { settings().Visual.IncludeAnimation = animation.IsChecked == true; Save(); UpdatePackage(); };
         license.Click += (_, _) => { settings().Visual.LicenseAccepted = settings().Visual.HiDreamLicenseAccepted = license.IsChecked == true; Save(); };
         importModels.Click += async (_, _) =>
         {
             if (!available || IsActive) return;
-            var picker = new OpenFileDialog { Multiselect = true, Filter = "Modelos HiDream|*.safetensors", Title = "Elegir un checkpoint HiDream o el asistente del perfil" };
+            var picker = new OpenFileDialog { Multiselect = true, Filter = "HiDream Full / Gemma 12B|*.safetensors", Title = "Elegir HiDream Full o Gemma 4 12B" };
             if (picker.ShowDialog(Window.GetWindow(this)) != true) return;
             await run(async ct => { await provisioner.ImportModelsAsync(picker.FileNames, new Progress<PreparationProgress>(progress), ct); status("Archivos importados y verificados. Pulsá Descargar y preparar para completar el motor y los componentes faltantes."); }); Refresh();
         };
@@ -229,7 +213,7 @@ public sealed class VisualPane : UserControl
     public void ReloadSettings()
     {
         var visual = settings().Visual;
-        enhancePrompt.IsChecked = visual.EnhancePrompt; reviewPreparedPrompt.IsChecked = visual.ReviewPreparedPrompt; fullEdit.IsChecked = visual.FullEdit; largeAssistant.IsChecked = visual.LargeAssistant;
+        enhancePrompt.IsChecked = visual.EnhancePrompt; reviewPreparedPrompt.IsChecked = visual.ReviewPreparedPrompt;
         imageQuality.SelectedIndex = visual.Width > 1536 || visual.Height > 1536 ? 2 : visual.Width > 1024 || visual.Height > 1024 ? 1 : 0;
         animation.IsChecked = visual.IncludeAnimation; license.IsChecked = visual.HiDreamLicenseAccepted;
         webReferences.IsChecked = visual.WebReferencesEnabled;
@@ -252,11 +236,7 @@ public sealed class VisualPane : UserControl
         var missing = provisioner.Missing(false, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant);
         if (missing.Length == 0) return "Modelos listos. Pulsá Iniciar IA arriba a la derecha.";
         var detail = string.Join(" · ", missing.Select(m => m.Asset.Name + " (" + (m.Asset.Bytes!.Value / 1e9).ToString("0.0") + " GB)"));
-        var hint = missing.Length == 1 && missing[0] == VisualCatalog.HiDreamFull
-            ? " Pulsá Descargar y preparar, o desactivá «Editar con el modelo Full» para empezar con Dev."
-            : missing.Length == 1 && missing[0] == VisualCatalog.PromptAssistant12B
-                ? " Pulsá Descargar y preparar, o desactivá «Asistente grande» para usar el E4B."
-                : " Pulsá Descargar y preparar; lo descargado se reutiliza.";
+        var hint = " Pulsá Descargar y preparar; lo descargado se reutiliza. Podés desactivar el asistente si preferís usar tu descripción directamente.";
         return "Falta descargar: " + detail + "." + hint;
     }
     private void UpdatePackage() => package.Text = $"Descarga completa: {VisualCatalog.DownloadBytes(settings().Visual.IncludeAnimation, gpu(), settings().Visual.EnhancePrompt, settings().Visual.FullEdit, settings().Visual.LargeAssistant) / 1e9:0.0} GB (motor y modelos; lo descargado se reutiliza).\nUbicación: {paths.VisualModels}\nCreaciones: {paths.VisualOutputs}";
@@ -277,9 +257,6 @@ public sealed class VisualPane : UserControl
         enhancePrompt.IsEnabled = importModels.IsEnabled = available && !IsActive;
         reviewPreparedPrompt.IsEnabled = available && settings().Visual.EnhancePrompt;
         reviewPreparedPrompt.Visibility = settings().Visual.EnhancePrompt ? Visibility.Visible : Visibility.Collapsed;
-        fullEdit.IsEnabled = available && !IsActive;
-        fullEdit.Visibility = task.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
-        largeAssistant.IsEnabled = available && !IsActive;
         attach.IsEnabled = clear.IsEnabled = gallery.IsEnabled = useIdentity.IsEnabled = available;
         imageQuality.IsEnabled = available && task.SelectedIndex != 2; imageQuality.Visibility = task.SelectedIndex == 2 ? Visibility.Collapsed : Visibility.Visible;
         size.IsEnabled = available; duration.IsEnabled = available && task.SelectedIndex == 2;
@@ -332,7 +309,7 @@ public sealed class VisualPane : UserControl
             visual.AnimationFrames = frames; visual.AnimationSteps = 4; Save();
             var chosenSeed = (long)RandomNumberGenerator.GetInt32(int.MaxValue);
             if (!string.IsNullOrWhiteSpace(seed.Text) && !long.TryParse(seed.Text, out chosenSeed)) throw new InvalidDataException("La semilla debe ser un número entero positivo o estar vacía.");
-            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, gpu()?.IsRtx3090 == true, visual.EnhancePrompt, kind == VisualTask.Edit && visual.FullEdit, visual.LargeAssistant, gpu()?.IsRtx3090 != true && visual.AnimationSol, gpu()?.IsRtx3090 == true);
+            var request = new VisualRequest(kind, prompt.Text.Trim(), width, height, chosenSeed, frames, visual.AnimationSteps, false, visual.EnhancePrompt, kind != VisualTask.Animation, true, gpu()?.IsRtx3090 != true && visual.AnimationSol, gpu()?.IsRtx3090 == true);
             request.Validate();
             var chosenReference = kind == VisualTask.Image && useIdentity.IsChecked != true ? null : reference;
             VisualReference? discovered = chosenReference is null ? null : onlineReference;

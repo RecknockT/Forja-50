@@ -1,4 +1,18 @@
-# Migración visual a HiDream-O1 Dev
+# Perfil visual unificado · Forja 50 0.4.19
+
+Desde el 26/10/2026 el único modelo activo para crear y editar es **HiDream-O1 Full FP8 escalado** (8,07 GB), en RTX 5080, 5070 Ti y 3090. El único asistente disponible es **Gemma 4 12B INT8** (12,06 GB); se puede desactivar, pero no elegir otro modelo. Se cargan por turnos, no simultáneamente en VRAM.
+
+Crear y editar usan la receta del ejemplo de Comfy: 40 pasos, CFG 5, `dpmpp_2m_sde_gpu`, escala de ruido 8 y suavizado de costuras. La descarga conserva tamaño, revisión y SHA-256 fijados. Dev FP8/BF16 y Gemma E4B quedan en Modelos anteriores y se borran solo por selección expresa. Los ajustes antiguos ya no los pueden activar ni duplicar la descarga de Full.
+
+Se comprobaron catálogo, migración, grafos de creación/edición, descarga/preparación y ventanas sin cargar modelos. La inferencia del flujo unificado queda pendiente; no se prometen tiempos, consumo ni una mejora medida de calidad. Wan conserva sus perfiles de animación independientes.
+
+Fuente de la receta: https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_hidream_o1.json
+
+---
+
+## Investigación histórica de la primera migración
+
+### Migración inicial a HiDream-O1 Dev
 
 Investigación y plan del 21/10/2026. Estado: planificación; ningún peso de HiDream descargado ni inferencia realizada por esta investigación. No representa una migración terminada ni una mejora medida.
 

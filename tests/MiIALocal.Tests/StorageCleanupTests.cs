@@ -26,7 +26,7 @@ static class StorageCleanupTests
         {
             var paths = new AppPaths(Path.Combine(root, "cleanup-individual")); var settings = new AppSettings();
             var first = await Put(paths.ModelPath(settings)); var second = await Put(paths.NinferModelPath(settings));
-            var image = await Put(VisualCatalog.PathFor(paths, VisualCatalog.HiDream));
+            var image = await Put(VisualCatalog.PathFor(paths, VisualCatalog.HiDreamFull));
             var video = await Put(VisualCatalog.PathFor(paths, VisualCatalog.Wan));
             var service = new StorageCleanup(paths, settings); var plan = service.Inspect();
             assert(plan.Count(e => e.Category == StorageCategory.Models && e.Paths.Length > 0) == 2
@@ -34,7 +34,7 @@ static class StorageCleanupTests
             var selected = plan.Single(e => e.Key == ReleaseProfile.Model.Id);
             service.DeleteEntries([selected]);
             assert(!File.Exists(first) && File.Exists(second) && File.Exists(image) && File.Exists(video), "Borrar un modelo arrastró otros modelos.");
-            var visual = service.Inspect().Single(e => e.Key == VisualCatalog.HiDream.Asset.Id);
+            var visual = service.Inspect().Single(e => e.Key == VisualCatalog.HiDreamFull.Asset.Id);
             service.DeleteEntries([visual]);
             assert(!File.Exists(image) && File.Exists(second) && File.Exists(video), "La selección visual borró otro componente.");
         });

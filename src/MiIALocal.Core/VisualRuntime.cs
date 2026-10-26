@@ -12,8 +12,6 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
     private ComfyClient? client;
     private GpuInfo? activeGpu;
     private bool promptAssistant;
-    private bool fullEdit;
-    private bool largeAssistant;
     private readonly SemaphoreSlim gate = new(1, 1);
     public bool IsReady => worker is { HasExited: false } && client is not null;
     public bool HasProcess => worker is not null;
@@ -35,7 +33,7 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             await StopWorkerAsync();
             var provisioner = new VisualProvisioner(paths, new VerifiedDownloader(http));
             if (!settings.HiDreamLicenseAccepted) throw new InvalidOperationException("Revisá y aceptá las licencias de HiDream en Modelos y descargas.");
-            await provisioner.VerifyModelsAsync(false, ct, gpu, settings.EnhancePrompt, settings.FullEdit, settings.LargeAssistant); activeGpu = gpu; promptAssistant = settings.EnhancePrompt; fullEdit = settings.FullEdit; largeAssistant = settings.LargeAssistant; provisioner.WriteConfiguration();
+            await provisioner.VerifyModelsAsync(false, ct, gpu, settings.EnhancePrompt, settings.FullEdit, settings.LargeAssistant); activeGpu = gpu; promptAssistant = settings.EnhancePrompt; provisioner.WriteConfiguration();
             var port = RuntimeSupervisor.FreePort(); var token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
             worker = OwnedProcess.Start(paths.ComfyPython, Arguments(paths, gpu, port), paths.ComfyRoot, Path.Combine(paths.Logs, "visual-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")),
                 new Dictionary<string, string> { ["FORJA_VISUAL_TOKEN"] = token, ["PYTHONUTF8"] = "1", ["PYTHONNOUSERSITE"] = "1", ["HF_HUB_OFFLINE"] = "1", ["TRANSFORMERS_OFFLINE"] = "1" });
@@ -55,7 +53,6 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
             request.Validate();
             if (!request.EnhancePrompt) throw new InvalidOperationException("El asistente de descripción está desactivado.");
             if (!promptAssistant) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
-            if (request.Task != VisualTask.Animation && request.HighPrecision != (activeGpu?.IsRtx3090 == true)) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             var input = StageReference(reference);
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
@@ -76,12 +73,12 @@ public sealed class VisualRuntime(AppPaths paths, HttpClient http) : IAsyncDispo
         try
         {
             request.Validate();
-            if (request.Task != VisualTask.Animation && (request.HighPrecision != (activeGpu?.IsRtx3090 == true) || request.EnhancePrompt != promptAssistant || request.EnhancePrompt && request.LargeAssistant != largeAssistant || (request.Task == VisualTask.Edit && request.FullEdit != fullEdit))) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
+            if (request.EnhancePrompt != promptAssistant) throw new InvalidOperationException("El perfil cambió. Detené y volvé a iniciar la IA.");
             if (!IsReady || client is null) throw new InvalidOperationException("Iniciá primero la IA del modo visual.");
             if (prepared is not null && !request.EnhancePrompt) prepared = null;
             if (request.Task == VisualTask.Animation && request.AnimationGguf != (activeGpu?.IsRtx3090 == true)) throw new InvalidOperationException("El perfil de animación no coincide con la placa. Volvé a iniciar la IA.");
             if (request.Task == VisualTask.Animation)
-                await new VisualProvisioner(paths, new VerifiedDownloader(http)).VerifyModelsAsync(true, ct, activeGpu, promptAssistant, false, largeAssistant);
+                await new VisualProvisioner(paths, new VerifiedDownloader(http)).VerifyModelsAsync(true, ct, activeGpu, promptAssistant, true, true);
             var input = prepared?.StagedReference ?? StageReference(reference);
             job = new() { Request = request, Reference = input, OnlineReference = onlineReference, Status = "Generando" }; store.Save(job);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(45));

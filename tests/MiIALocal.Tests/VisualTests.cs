@@ -15,7 +15,7 @@ static class VisualTests
                 var graph = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(kind, "El brazo rojo", 1024, 1024, 42, EnhancePrompt: assistant), new string('a', 32), "reference.png"));
                 File.WriteAllText(Path.Combine(root, $"hidream-{kind}-{assistant}-graph.json"), graph.GetRawText());
                 assert(graph.GetProperty("1").GetProperty("class_type").GetString() == "CheckpointLoaderSimple", "No se carga el checkpoint integrado.");
-                assert(graph.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 28, "Se cambió el calendario destilado.");
+                assert(graph.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 40, "Full no usa su calendario de 40 pasos.");
                 assert(graph.GetProperty("23").GetProperty("inputs").GetProperty("images.image_1")[0].GetString() == "21", "La referencia no llega a HiDream.");
                 assert(graph.TryGetProperty("31", out _) == assistant, "Asistente obligatorio o ignorado.");
                 if (assistant) assert(graph.GetProperty("31").GetProperty("inputs").GetProperty("image")[0].GetString() == "22"
@@ -52,7 +52,7 @@ static class VisualTests
             assert(!animated.TryGetProperty("31", out _), "La animación vuelve a ejecutar el asistente.");
             return Task.CompletedTask;
         });
-        await test("HiDream: editar usa el programador de flujo sin la reinyección de ruido", () =>
+        await test("HiDream Full: crear y editar conservan la receta y el encuadre", () =>
         {
             var prefix = new string('a', 32);
             assert(VisualSizes.ForReference(1024, 1024) == (2048, 2048) && VisualSizes.ForReference(1024, 576) == (2560, 1440)
@@ -63,14 +63,15 @@ static class VisualTests
             try { new VisualRequest(VisualTask.Image, "x", 2112, 2048, 1).Validate(); throw new Exception("Se aceptó un presupuesto de píxeles mayor al entrenado."); } catch (InvalidDataException) { }
             var edit = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá solo el brazo", 1024, 1024, 42), prefix, "reference.png"));
             assert(edit.GetProperty("9").GetProperty("class_type").GetString() == "KSamplerSelect", "La edición conserva el muestreador destilado.");
-            assert(edit.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "euler", "La edición no usa Euler de flujo.");
+            assert(edit.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "dpmpp_2m_sde_gpu", "La edición no usa el muestreador Full.");
             assert(!edit.GetProperty("9").GetProperty("inputs").TryGetProperty("noise_clip_std", out _), "La edición reinyecta ruido por paso.");
-            assert(edit.GetProperty("7").GetProperty("inputs").GetProperty("noise_scale").GetDouble() == 7.6, "La edición pierde la escala de ruido inicial.");
-            assert(edit.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 28 && edit.GetProperty("11").GetProperty("inputs").GetProperty("cfg").GetDouble() == 1.0, "La edición cambió el calendario o la guía.");
+            assert(edit.GetProperty("7").GetProperty("inputs").GetProperty("noise_scale").GetDouble() == 8.0, "La edición pierde la escala de ruido de Full.");
+            assert(edit.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 40 && edit.GetProperty("11").GetProperty("inputs").GetProperty("cfg").GetDouble() == 5.0, "La edición cambió el calendario o la guía.");
             var personalized = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Frieren volando", 1024, 1024, 42), prefix, "wiki-reference.png"));
             assert(personalized.GetProperty("9").GetProperty("class_type").GetString() == "KSamplerSelect", "Una referencia única no usa el programador de edición.");
             var create = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 1024, 1024, 42), prefix));
-            assert(create.GetProperty("9").GetProperty("class_type").GetString() == "SamplerLCM" && create.GetProperty("9").GetProperty("inputs").GetProperty("noise_clip_std").GetDouble() == 2.5, "La creación sin referencia pierde el muestreador destilado.");
+            assert(create.GetProperty("9").GetProperty("inputs").GetProperty("sampler_name").GetString() == "dpmpp_2m_sde_gpu"
+                && create.GetProperty("5").GetProperty("class_type").GetString() == "CLIPTextEncode", "Crear Full no usa su muestreador ni una rama negativa real.");
             return Task.CompletedTask;
         });
         await test("Asistente: entiende el pedido, conserva los nombres y usa muestreo fiel", () =>
@@ -127,35 +128,41 @@ static class VisualTests
                 && full.GetProperty("8").GetProperty("inputs").GetProperty("model")[0].GetString() == "10"
                 && full.GetProperty("11").GetProperty("inputs").GetProperty("model")[0].GetString() == "10", "La edición con Full no suaviza costuras.");
             assert(full.GetProperty("7").GetProperty("inputs").GetProperty("noise_scale").GetDouble() == 8.0, "La edición con Full no usa la escala de ruido del modelo.");
-            var dev = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Edit, "Cambiá el brazo", 2048, 2048, 42), prefix, "reference.png"));
-            assert(dev.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDream.Asset.FileName
-                && dev.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 28 && !dev.TryGetProperty("10", out _), "La edición sin Full no vuelve a Dev.");
-            var create = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "Robot", 2048, 2048, 42, FullEdit: true), prefix));
-            assert(create.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDream.Asset.FileName, "Crear no debe cambiar de modelo.");
-            assert(VisualCatalog.For(false, null, false, true).Contains(VisualCatalog.HiDreamFull) && VisualCatalog.DownloadBytes(false, null, false, true) > VisualCatalog.DownloadBytes(false, null, false), "El perfil Full no entra en la descarga.");
-            assert(!VisualCatalog.For(true, null, false, false).Contains(VisualCatalog.HiDreamFull), "La animación no debe exigir el modelo Full.");
-            assert(VisualCatalog.For(true, null, true, true).Contains(VisualCatalog.HiDreamFull), "Preparar con animaciones debe incluir el modelo Full de edición.");
+            foreach (var task in new[] { VisualTask.Image, VisualTask.Edit })
+            foreach (var historicalFlag in new[] { false, true })
+            {
+                var unified = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(task, "Robot", 2048, 2048, 42, FullEdit: historicalFlag, HighPrecision: historicalFlag), prefix, task == VisualTask.Edit ? "reference.png" : null));
+                assert(unified.GetProperty("1").GetProperty("inputs").GetProperty("ckpt_name").GetString() == VisualCatalog.HiDreamFull.Asset.FileName
+                    && unified.GetProperty("8").GetProperty("inputs").GetProperty("steps").GetInt32() == 40
+                    && unified.GetProperty("11").GetProperty("inputs").GetProperty("cfg").GetDouble() == 5
+                    && unified.GetProperty("10").GetProperty("class_type").GetString() == "HiDreamO1PatchSeamSmoothing", "Los ajustes heredados reactivan Dev o pierden la receta Full.");
+            }
+            assert(VisualCatalog.For(false, null, false, true).SequenceEqual(VisualCatalog.For(false, null, false, false)), "Full se descarga dos veces por una opción antigua.");
+            assert(VisualCatalog.For(true, null, true, true).Count(m => m == VisualCatalog.HiDreamFull) == 1, "Preparar con animaciones duplica Full.");
             return Task.CompletedTask;
         });
-        await test("Asistente: el modelo grande se puede elegir y viaja al grafo", () =>
+        await test("Asistente: Gemma 12B es único y los ajustes heredados no reactivan E4B", () =>
         {
             var prefix = new string('a', 32);
             var small = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "frieren", 1024, 1024, 42, EnhancePrompt: true), prefix));
-            assert(small.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant.Asset.FileName, "El asistente por defecto no es el E4B.");
+            assert(small.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant12B.Asset.FileName, "El asistente predeterminado no es 12B.");
             var large = JsonSerializer.SerializeToElement(VisualWorkflows.Build(new(VisualTask.Image, "frieren", 1024, 1024, 42, EnhancePrompt: true, LargeAssistant: true), prefix));
             assert(large.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant12B.Asset.FileName, "El asistente grande no llega al grafo.");
             var prepare = JsonSerializer.SerializeToElement(VisualWorkflows.BuildPrepare(new(VisualTask.Image, "frieren", 1024, 1024, 42, EnhancePrompt: true, LargeAssistant: true), null));
             assert(prepare.GetProperty("30").GetProperty("inputs").GetProperty("clip_name").GetString() == VisualCatalog.PromptAssistant12B.Asset.FileName, "La preparación del asistente grande usa el archivo chico.");
             var profile = VisualCatalog.For(false, null, true, false, true);
             assert(profile.Contains(VisualCatalog.PromptAssistant12B) && !profile.Contains(VisualCatalog.PromptAssistant), "El perfil no cambia de asistente.");
-            assert(VisualCatalog.DownloadBytes(false, null, true, true, true) > VisualCatalog.DownloadBytes(false, null, true, true, false), "El asistente grande no suma su descarga.");
+            assert(VisualCatalog.DownloadBytes(false, null, true, true, true) == VisualCatalog.DownloadBytes(false, null, true, true, false), "Un ajuste antiguo altera la descarga del único asistente.");
+            var oldSettings = new VisualSettings { FullEdit = false, LargeAssistant = false }; oldSettings.Normalize();
+            assert(oldSettings.FullEdit && oldSettings.LargeAssistant, "Los ajustes heredados no migran al perfil único.");
+            assert(VisualCatalog.Legacy.Contains(VisualCatalog.PromptAssistant) && VisualCatalog.Legacy.Contains(VisualCatalog.HiDream) && VisualCatalog.Legacy.Contains(VisualCatalog.HiDreamBf16), "No se pueden limpiar modelos retirados.");
             return Task.CompletedTask;
         });
         await test("HiDream: perfil de descarga por GPU e importación inválida conserva el original", async () =>
         {
             var card = new GpuInfo(0, "NVIDIA GeForce RTX 3090", 24576, 24576, "fixture");
-            assert(VisualCatalog.For(false, card, false).Single() == VisualCatalog.HiDreamBf16, "3090 no usa el perfil BF16.");
-            assert(VisualCatalog.For(false, null, false).Single() == VisualCatalog.HiDream, "Se descargan variantes innecesarias.");
+            assert(VisualCatalog.For(false, card, false).Single() == VisualCatalog.HiDreamFull, "La 3090 no usa Full.");
+            assert(VisualCatalog.For(false, null, false).Single() == VisualCatalog.HiDreamFull, "Se descargan variantes innecesarias.");
             var paths = new AppPaths(Path.Combine(root, "hidream-import")); var wrong = Path.Combine(paths.Root, VisualCatalog.HiDream.Asset.FileName); File.WriteAllText(wrong, "invalid");
             try { await new VisualProvisioner(paths, null!).ImportModelsAsync([wrong], null, default); throw new Exception("Se importó un modelo incorrecto."); } catch (InvalidDataException) { }
             assert(!File.Exists(VisualCatalog.PathFor(paths, VisualCatalog.HiDream)) && File.Exists(wrong), "Una importación fallida cambió los archivos.");
@@ -276,8 +283,8 @@ static class VisualTests
         });
         await test("Visual: catálogo completo fijado, animación opcional y sin Qwen/OpenCode", () =>
         {
-            assert(VisualCatalog.Images.Length == 5 && VisualCatalog.For(true).Length == 6 && VisualCatalog.Legacy.Length == 4, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
-            assert(VisualCatalog.For(false, null, true, true).Length == 3 && VisualCatalog.For(true, null, true, true).Length == 7, "El modelo Full para editar no se agrega al perfil.");
+            assert(VisualCatalog.Images.Length == 2 && VisualCatalog.For(true).Length == 6 && VisualCatalog.Legacy.Length == 7, "Faltan asistente, codificadores, VAE o gestión de modelos anteriores.");
+            assert(VisualCatalog.For(false, null, true, true).Length == 2 && VisualCatalog.For(true, null, true, true).Length == 6, "El modelo Full para editar no se agrega al perfil.");
             foreach (var model in VisualCatalog.All)
             {
                 assert(model.Asset.Bytes > 0 && model.Asset.Sha256.Length == 64 && !model.Asset.Url.Contains("/main/"), "Modelo sin integridad o revisión fija.");
@@ -509,8 +516,8 @@ static class VisualTests
             File.WriteAllText(Path.Combine(paths.ComfyRoot, ".forja-" + VisualCatalog.Runtime.Sha256[..16]), VisualCatalog.Runtime.Sha256);
             assert(!provisioner.RuntimeMissing && !provisioner.IsPrepared(false), "Sin modelos no debe figurar preparado.");
             var missing = provisioner.Missing(false, null, true, true);
-            assert(missing.Length == 3 && missing.Contains(VisualCatalog.HiDreamFull) && missing.Contains(VisualCatalog.PromptAssistant) && missing.Contains(VisualCatalog.HiDream), "No se informa qué falta descargar.");
-            assert(provisioner.Missing(false, null, true, false).Length == 2 && !provisioner.Missing(false, null, true, false).Contains(VisualCatalog.HiDreamFull), "Desactivar el modelo Full debe quitar su descarga.");
+            assert(missing.Length == 2 && missing.Contains(VisualCatalog.HiDreamFull) && missing.Contains(VisualCatalog.PromptAssistant12B), "No se informa qué falta descargar.");
+            assert(provisioner.Missing(false, null, true, false).Length == 2 && provisioner.Missing(false, null, true, false).Contains(VisualCatalog.HiDreamFull), "Los ajustes antiguos no deben quitar Full del perfil.");
             assert(provisioner.Missing(true, null, true, true).Contains(VisualCatalog.Wan), "La animación debe informar su modelo propio.");
             var report = provisioner.Report(false, null, true, true);
             assert(report.Contains("FALTA") && report.Contains("HiDream-O1 Full") && report.Contains("Puede iniciar: no"), "El informe no describe el estado real.");

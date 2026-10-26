@@ -36,7 +36,7 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
         text.AppendLine("Marca del motor: " + (File.Exists(Marker) ? "presente" : "falta") + " · " + Path.GetFileName(Marker));
         text.AppendLine("Python del motor: " + (File.Exists(paths.ComfyPython) ? "presente" : "falta") + " · " + paths.ComfyPython);
         text.AppendLine("main.py: " + (File.Exists(Path.Combine(paths.ComfyRoot, "ComfyUI", "main.py")) ? "presente" : "falta"));
-        text.AppendLine("Opciones: asistente=" + assistant + " · modelo Full para editar=" + fullEdit + " · asistente 12B=" + largeAssistant + " · animación=" + animation);
+        text.AppendLine("Opciones: asistente=" + assistant + " · modelo=HiDream-O1 Full FP8 (crear y editar) · asistente disponible=Gemma 4 12B INT8" + " · animación=" + animation);
         text.AppendLine("Placa: " + (gpu is null ? "no detectada" : gpu.Name + " · " + gpu.FreeMiB + " MiB libres"));
         if (animation && gpu?.IsRtx3090 == true)
             text.AppendLine("Cargador GGUF y dependencia aislada: " + (new GgufRuntime(paths, downloader).IsPrepared ? "listos" : "faltan; pulsá Descargar y preparar"));
@@ -100,7 +100,7 @@ public sealed class VisualProvisioner(AppPaths paths, VerifiedDownloader downloa
         foreach (var source in files)
         {
             var model = VisualCatalog.Images.SingleOrDefault(m => m.Asset.FileName.Equals(Path.GetFileName(source), StringComparison.OrdinalIgnoreCase))
-                ?? throw new InvalidDataException("El archivo no pertenece al perfil HiDream fijado por Forja.");
+                ?? throw new InvalidDataException("El archivo no pertenece al perfil HiDream Full / Gemma 4 12B fijado por Forja.");
             progress?.Report(new("Comprobando " + model.Asset.Name));
             if (!await VerifiedDownloader.MatchesAsync(source, model.Asset, ct)) throw new InvalidDataException("El tamaño o SHA-256 de " + model.Asset.FileName + " no coincide con la versión de Forja.");
             var destination = VisualCatalog.PathFor(paths, model);

@@ -1,6 +1,13 @@
 # Estado verificable de Forja 50
 
-26 de octubre de 2026 · desarrollo 0.4.18.
+26 de octubre de 2026 · desarrollo 0.4.19.
+
+## Un único generador y un único asistente · 0.4.19
+
+- Crear y editar comparten HiDream-O1 Full FP8 escalado. Se aplica la receta Full también al crear: 40 pasos, CFG 5, DPM++ 2M SDE, ruido 8 y suavizado de costuras. No se ejecuta el muestreador ni el calendario destilado de Dev.
+- El asistente único es Gemma 4 12B INT8. Puede desactivarse o revisarse su descripción antes de generar; se elimina el selector E4B/12B y el selector Dev/Full.
+- Full aparece una sola vez en el catálogo y la descarga. Dev FP8/BF16 y E4B pasan a modelos anteriores, con borrado individual. Ajustes y trabajos antiguos siguen siendo legibles; sus selectores no reactivan modelos retirados. No se borran archivos automáticamente.
+- La UI y el diagnóstico muestran la configuración real. Pruebas sin inferencia; la app continúa desinstalada en la PC del usuario y no se descargaron pesos para este cambio. Pendiente prueba física del flujo unificado, especialmente Full en creación y el uso de FP8 en 3090.
 
 ## Nombre público y almacenamiento por modelo · 0.4.18
 
