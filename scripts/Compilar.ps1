@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 param([switch]$Publicar, [string]$CompiladorInstalador)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -21,13 +21,16 @@ if ($env:FORJA_TEST_PYTHON) {
     & $env:FORJA_TEST_PYTHON (Join-Path $projectRoot 'tests/wan_stage_test.py')
     if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba de etapas Wan.' }
 }
-& (Join-Path $PSScriptRoot 'Verificar-Cierre.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
-& (Join-Path $PSScriptRoot 'Verificar-Configuracion.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
-& (Join-Path $PSScriptRoot 'Verificar-Perfiles.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
-& (Join-Path $PSScriptRoot 'Verificar-Modos.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
-& (Join-Path $PSScriptRoot 'Verificar-CuentaYLimpieza.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
-& (Join-Path $PSScriptRoot 'Verificar-Almacenamiento.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Mi IA Local.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Cierre.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Forja 50.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Configuracion.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Forja 50.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Perfiles.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Forja 50.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Modos.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Forja 50.exe')
+& (Join-Path $PSScriptRoot 'Verificar-CuentaYLimpieza.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Forja 50.exe')
+& (Join-Path $PSScriptRoot 'Verificar-Almacenamiento.ps1') -Aplicacion (Join-Path $projectRoot 'src\MiIALocal.Desktop\bin\Release\net10.0-windows\Forja 50.exe')
 if (!$Publicar) { return }
+if ($CompiladorInstalador) {
+    & (Join-Path $PSScriptRoot 'Verificar-Instalador.ps1') -Compilador $CompiladorInstalador
+}
 $output = Join-Path $projectRoot ('artifacts\paquete-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $appDirectory = Join-Path $output 'app'
 & $dotnetExe publish (Join-Path $projectRoot 'src\MiIALocal.Desktop') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o $appDirectory --nologo

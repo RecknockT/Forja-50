@@ -1,4 +1,4 @@
-# Mi IA Local — plan de producto
+# Forja 50 — plan de producto
 
 Fecha: 20 de octubre de 2026. Plan original conservado como referencia. El estado de implementación y pruebas está en ESTADO.md.
 
@@ -12,7 +12,7 @@ La persona no escribe comandos, configura puertos, edita JSON, instala Node, bus
 
 La experiencia reproduce lo que ya funciona en la PC de referencia: Qwen local en la RTX 5080, OpenCode como agente, lectura y edición de archivos, PowerShell, pruebas y Git local. La aplicación integra los controles y el chat en una sola ventana.
 
-Nombre de trabajo: **Mi IA Local**. El nombre comercial y el icono definitivos pueden cambiar sin afectar la arquitectura.
+Nombre público: **Forja 50**.
 
 ## 2. Referencia funcional verificada
 
@@ -119,7 +119,7 @@ La información técnica se reserva para Ajustes avanzados y Diagnóstico. La pa
 Se conserva OpenCode como agente y NInfer/KVMem como motor, en procesos separados gestionados por la aplicación. La aplicación no reconstruye las herramientas de programación ni modifica los pesos del modelo. Esto mantiene cerca la combinación que ya pasó la prueba real.
 
 ```text
-Mi IA Local.exe
+Forja 50.exe
   ├─ Asistente de preparación y gestor de descargas
   ├─ Proyectos, configuración y diagnóstico
   ├─ Supervisor de procesos y estado de GPU

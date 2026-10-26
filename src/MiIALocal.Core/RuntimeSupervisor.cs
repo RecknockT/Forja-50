@@ -59,7 +59,7 @@ public sealed class RuntimeSupervisor(AppPaths paths, HttpClient client) : IAsyn
             AgentPort = FreePort(); AgentPassword = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
             var instruction = Path.Combine(paths.Root, "instrucciones.md"); AppPaths.AtomicWrite(instruction, AgentConfiguration.Instructions);
             var agentTuning = ninfer5080 ? new EngineTuning { MaxOutput = settings.NativeTuning.MaxOutput, AgentTemperature = settings.NativeTuning.AgentTemperature } : settings.Tuning;
-            var agentModelName = ninfer5080 ? "Qwen3.8-27B · NInfer-5080" : "Qwen 27B · Mi IA Local";
+            var agentModelName = ninfer5080 ? "Qwen3.8-27B · NInfer-5080" : "Qwen 27B · Forja 50";
             var environment = new Dictionary<string, string>
             {
                 ["XDG_DATA_HOME"] = Path.Combine(paths.Root, "agent-data"), ["XDG_STATE_HOME"] = Path.Combine(paths.Root, "agent-state"),

@@ -1,8 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF>
-    <AssemblyName>Mi IA Local</AssemblyName><ApplicationIcon>Assets\app.ico</ApplicationIcon><Product>Forja 50</Product><Title>Forja 50</Title><ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.4.2</Version><AssemblyVersion>0.4.2.0</AssemblyVersion>
+    <AssemblyName>Forja 50</AssemblyName><ApplicationIcon>Assets\app.ico</ApplicationIcon><Product>Forja 50</Product><Title>Forja 50</Title><ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.4.18</Version><AssemblyVersion>0.4.18.0</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup><Resource Include="Assets\logo.png" /><Resource Include="Assets\app.ico" />
     <ProjectReference Include="..\MiIALocal.Core\MiIALocal.Core.csproj" />

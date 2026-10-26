@@ -1,6 +1,14 @@
 # Estado verificable de Forja 50
 
-26 de octubre de 2026 · desarrollo 0.4.17.
+26 de octubre de 2026 · desarrollo 0.4.18.
+
+## Nombre público y almacenamiento por modelo · 0.4.18
+
+- El ejecutable público pasa a `Forja 50.exe`. Instalador, accesos, desinstalador, scripts de desarrollo/empaquetado, manifiesto y nombre del modelo/proveedor de OpenCode usan Forja 50. Se conservan identificadores internos de compatibilidad, el AppId, el mutex y la lectura de datos anteriores.
+- La ruta heredada del instalador se debía a `UsePreviousAppDir=yes`: Windows devolvía la carpeta anterior aunque el valor predeterminado ya decía Forja 50. Ahora la carpeta predeterminada anterior se actualiza mediante su desinstalador silencioso (solo archivos del programa, sin limpiar datos), después de comprobar aplicaciones abiertas; las carpetas personalizadas se conservan.
+- Corregido el bloqueo de limpieza al desinstalar: los packs/índices del historial Git de OpenCode se guardan como solo lectura en Windows. Se retira solo ese atributo después de validar las protecciones, antes de eliminar el archivo seleccionado. No se cambian ACL ni archivos externos.
+- Almacenamiento separa modelos de programación, modelos de imágenes/animación y modelos anteriores. Cada archivo de modelo o componente tiene su casilla. La confirmación muestra la selección individual. Se vuelve a inspeccionar esa selección por clave y ruta antes de borrar; nunca se transforma una selección individual en el borrado de toda la categoría.
+- Las carpetas de datos heredadas se reutilizan para conservar rutas y descargas. No se mueven modelos ni proyectos por un cambio de marca.
 
 ## Wan A14B por placa · 0.4.17
 

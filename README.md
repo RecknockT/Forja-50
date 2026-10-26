@@ -4,7 +4,7 @@
 
 Aplicación de Windows 11 para trabajar con archivos, terminal y Git usando IA local. RTX 5070 Ti y RTX 5080 de escritorio (16 GB), o RTX 3090 (24 GB), con 32 GB de RAM.
 
-La versión 0.4.17 de desarrollo ofrece dos modos independientes: Programación (Qwen + OpenCode y Git) e Imágenes y animación (ComfyUI administrado, HiDream-O1 y Wan 2.2 A14B opcional: NVFP4 normal/Sol en RTX 50; GGUF Q4_K_S + LightX2V en RTX 3090). El modo visual no necesita descargar el Qwen de programación ni elegir un repositorio. Incluye edición con la imagen seleccionada, historial, exportación PNG/MP4/GIF y descargas verificadas. Wan A14B se probó físicamente en RTX 5080; las pruebas físicas de 5070 Ti y 3090 siguen pendientes. No se garantizan tiempos ni consumo. Setup y portable no contienen pesos de IA.
+La versión 0.4.18 de desarrollo ofrece dos modos independientes: Programación (Qwen + OpenCode y Git) e Imágenes y animación (ComfyUI administrado, HiDream-O1 y Wan 2.2 A14B opcional: NVFP4 normal/Sol en RTX 50; GGUF Q4_K_S + LightX2V en RTX 3090). El modo visual no necesita descargar el Qwen de programación ni elegir un repositorio. Incluye edición con la imagen seleccionada, historial, exportación PNG/MP4/GIF y descargas verificadas. Wan A14B se probó físicamente en RTX 5080; las pruebas físicas de 5070 Ti y 3090 siguen pendientes. No se garantizan tiempos ni consumo. Setup y portable no contienen pesos de IA.
 
 **Administrar almacenamiento** permite eliminar modelos, componentes, caché, conversaciones y ajustes, mostrando rutas y espacio y pidiendo confirmación. El desinstalador ofrece la misma limpieza opcional; conservar datos es la opción inicial. Los archivos importados, los proyectos y los repositorios Git quedan protegidos. Ver [limpieza y desinstalación](docs/PRIMEROS-PASOS.md#administrar-almacenamiento-y-desinstalar).
 
@@ -38,7 +38,7 @@ Pausar conserva el prefijo y los fragmentos completos, incompletos o fuera de or
 
 Seguí [Primeros pasos](docs/PRIMEROS-PASOS.md). El programa detecta la placa, permite elegir la carpeta del modelo y trabajar con un repositorio Git existente. El chat usa OpenCode y se comunica con el motor solo por loopback con claves efímeras.
 
-Las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para datos y modelos. Las actualizaciones conservan la carpeta de instalación anterior y reutilizan `%LOCALAPPDATA%\MiIALocal` si existe, sin mover ni duplicar descargas. El portable usa `app\datos` junto al ejecutable; `--data-root` permite datos aislados. Se conservan el AppId y el nombre interno del ejecutable para actualizar instalaciones anteriores.
+Las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para datos y modelos. El instalador cambia la carpeta predeterminada anterior a `Forja 50` y conserva ubicaciones personalizadas. Las actualizaciones reutilizan `%LOCALAPPDATA%\MiIALocal` si existe, sin mover ni duplicar descargas. El portable usa `app\datos` junto al ejecutable; `--data-root` permite datos aislados. Se conserva el AppId para reconocer versiones anteriores; el ejecutable ahora se llama `Forja 50.exe`.
 
 ## Desarrollar y generar paquetes
 

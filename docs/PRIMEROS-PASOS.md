@@ -1,8 +1,8 @@
-﻿# Primeros pasos con Forja 50
+# Primeros pasos con Forja 50
 
 Versión de desarrollo para Windows 11 x64, RTX 5070 Ti / RTX 5080 de escritorio (16 GB) o RTX 3090 (24 GB), con 32 GB de RAM. La prueba de inferencia de los nuevos perfiles en Forja está pendiente.
 
-1. Instalá el Setup, o extraé el ZIP portable y ejecutá `app\Mi IA Local.exe`. No hace falta instalar CUDA ni compiladores.
+1. Instalá el Setup, o extraé el ZIP portable y ejecutá `app\Forja 50.exe`. No hace falta instalar CUDA ni compiladores.
 2. Revisá la placa detectada. El modo nativo selecciona 64K y prefill 896 en la 5080, o 512 en la 5070 Ti. La 3090 selecciona KVMem para RTX 30, contexto 128K y prefill 512; su prueba física sigue pendiente. La configuración activa aparece en el panel izquierdo.
 3. Elegí dónde guardar el modelo: Qwen de Todd (16,5 GB) en el modo nativo, o Swift (12,8 GB) en KVMem/3090. Reservá el espacio que indique el programa para preparar modelo, motor y herramientas.
 4. Revisá las licencias y pulsá **Preparar IA**. Se descargan motor y modelo automáticamente. El descargador usa 16 conexiones y muestra GB, MB/s recientes y tiempo restante aproximado.
@@ -59,7 +59,7 @@ Los datos visuales están bajo `visual` dentro de la carpeta de datos: `models`,
 
 ## Ubicación de los datos
 
-Desde 0.2.4 las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para los datos (modelos en `models`). Al actualizar se conserva la ubicación del programa y se reutilizan los datos anteriores en `%LOCALAPPDATA%\MiIALocal` si existen; no se mueven ni se vuelven a descargar. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
+Desde 0.2.4 las instalaciones nuevas usan `%LOCALAPPDATA%\Programs\Forja 50` para el programa y `%LOCALAPPDATA%\Forja 50` para los datos (modelos en `models`). Al actualizar se reemplaza la carpeta predeterminada anterior por `Forja 50`; las ubicaciones personalizadas se conservan. Se reutilizan los datos anteriores en `%LOCALAPPDATA%\MiIALocal` si existen; no se mueven ni se vuelven a descargar. La portable guarda `app\datos`. Conservá esa carpeta al mover o actualizar la portable; los modelos importados de una ubicación externa dependen de esa ruta.
 
 ## Administrar almacenamiento y desinstalar
 
@@ -85,3 +85,5 @@ El análisis de fuentes y la diferencia entre Windows nativo y WSL2 están en [N
 El asistente visual se carga en la GPU seleccionada aun con ahorro de memoria. Si no completa la preparación en cinco minutos, se detiene e informa cómo continuar; podés desactivar el asistente y usar tu descripción. El texto preparado se puede revisar antes de generar. Detener libera el proceso y sus modelos. La velocidad de esta corrección todavía requiere una nueva medición física.
 
 Podés cerrar Administrar almacenamiento mientras calcula el espacio; eso cancela el cálculo y conserva los datos. Durante una eliminación confirmada, esperá a que termine. La desinstalación silenciosa conserva datos por diseño.
+
+En Administrar almacenamiento, los modelos de programación y los de imágenes/animación aparecen en apartados separados. Cada modelo tiene una casilla propia: borrar uno no selecciona los demás. La confirmación enumera exactamente los elementos elegidos.

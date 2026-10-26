@@ -7,6 +7,50 @@ static class StorageCleanupTests
     {
         async Task<string> Put(string file) { Directory.CreateDirectory(Path.GetDirectoryName(file)!); await File.WriteAllTextAsync(file, "conservar o eliminar según selección"); return file; }
         void Blocked(Action action) { try { action(); } catch (IOException) { return; } throw new Exception("Se permitió una limpieza protegida."); }
+        await test("Limpieza: packs Git de solo lectura se retiran sin tocar modelos ni archivos importados", async () =>
+        {
+            var paths = new AppPaths(Path.Combine(root, "cleanup-readonly")); var settings = new AppSettings();
+            var index = await Put(Path.Combine(paths.Root, "agent-data", "opencode", "snapshot", "fixture", "objects", "pack", "pack-fixture.idx"));
+            var pack = await Put(Path.ChangeExtension(index, ".pack"));
+            var model = await Put(paths.ActiveModelPath(settings));
+            File.SetAttributes(index, File.GetAttributes(index) | FileAttributes.ReadOnly);
+            File.SetAttributes(pack, File.GetAttributes(pack) | FileAttributes.ReadOnly);
+            File.SetAttributes(model, File.GetAttributes(model) | FileAttributes.ReadOnly);
+            new StorageCleanup(paths, settings).Delete([StorageCategory.Conversations]);
+            assert(!File.Exists(index) && !File.Exists(pack) && File.Exists(model)
+                && (File.GetAttributes(model) & FileAttributes.ReadOnly) != 0, "Se dejó un pack bloqueado o se alteró un modelo no seleccionado.");
+            new StorageCleanup(paths, settings).Delete([StorageCategory.Models]);
+            assert(!File.Exists(model), "No se pudo borrar un modelo seleccionado de solo lectura.");
+        });
+        await test("Limpieza: borrar un modelo conserva los demás modelos y modos", async () =>
+        {
+            var paths = new AppPaths(Path.Combine(root, "cleanup-individual")); var settings = new AppSettings();
+            var first = await Put(paths.ModelPath(settings)); var second = await Put(paths.NinferModelPath(settings));
+            var image = await Put(VisualCatalog.PathFor(paths, VisualCatalog.HiDream));
+            var video = await Put(VisualCatalog.PathFor(paths, VisualCatalog.Wan));
+            var service = new StorageCleanup(paths, settings); var plan = service.Inspect();
+            assert(plan.Count(e => e.Category == StorageCategory.Models && e.Paths.Length > 0) == 2
+                && plan.Count(e => e.Category == StorageCategory.VisualModels && e.Paths.Length > 0) == 2, "Los modelos no se presentan separados por modo y archivo.");
+            var selected = plan.Single(e => e.Key == ReleaseProfile.Model.Id);
+            service.DeleteEntries([selected]);
+            assert(!File.Exists(first) && File.Exists(second) && File.Exists(image) && File.Exists(video), "Borrar un modelo arrastró otros modelos.");
+            var visual = service.Inspect().Single(e => e.Key == VisualCatalog.HiDream.Asset.Id);
+            service.DeleteEntries([visual]);
+            assert(!File.Exists(image) && File.Exists(second) && File.Exists(video), "La selección visual borró otro componente.");
+        });
+        await test("Limpieza: selección obsoleta o alterada no borra nada", async () =>
+        {
+            var paths = new AppPaths(Path.Combine(root, "cleanup-stale")); var settings = new AppSettings();
+            var first = await Put(paths.ModelPath(settings)); var second = await Put(paths.NinferModelPath(settings));
+            var service = new StorageCleanup(paths, settings);
+            var selection = service.Inspect().Single(e => e.Key == ReleaseProfile.Model.Id);
+            Blocked(() => service.DeleteEntries([selection with { Paths = [second] }]));
+            assert(File.Exists(first) && File.Exists(second), "Se aceptó una ruta alterada.");
+            var other = service.Inspect().Single(e => e.Key == ReleaseProfile.NinferModel.Id);
+            File.Delete(second);
+            Blocked(() => service.DeleteEntries([selection, other]));
+            assert(File.Exists(first), "La selección se validó después de comenzar el borrado.");
+        });
         await test("Limpieza: cancelar el cálculo de espacio conserva los archivos", async () =>
         {
             var paths = new AppPaths(Path.Combine(root, "cleanup-cancel"));

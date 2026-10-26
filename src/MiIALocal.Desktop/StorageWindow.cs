@@ -36,7 +36,7 @@ public sealed class StorageWindow : Window
         header.Children.Add(new TextBlock { Text = "Administrar almacenamiento", FontSize = 24, Margin = new(0, 0, 0, 12) });
         header.Children.Add(new TextBlock {
             Text = (uninstall ? "Elegí qué eliminar antes de desinstalar. Cerrar esta ventana conserva los datos restantes.\n\n" : "La IA debe estar detenida. Elegí qué eliminar; podrás descargar los componentes de nuevo.\n\n")
-                + "Los archivos importados, los repositorios Git y la carpeta de proyecto están protegidos. Solo se borran los archivos de Forja que confirmes. Si eliminás conversaciones o ajustes, se reiniciará la vista y Forja seguirá abierta.",
+                + "Cada modelo tiene su propia casilla: podés borrar uno y conservar los demás. Los archivos importados, los repositorios Git y la carpeta de proyecto están protegidos. Si eliminás conversaciones o ajustes, se reiniciará la vista y Forja seguirá abierta.",
             TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 18) });
         var footer = new StackPanel(); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
         footer.Children.Add(status);
@@ -59,16 +59,21 @@ public sealed class StorageWindow : Window
             var plan = await Task.Run(() => cleanup.Inspect(inspection.Token));
             if (closed || inspection.IsCancellationRequested) return;
             entries.Children.Clear(); choices.Clear();
-            foreach (var item in plan)
+            foreach (var group in plan.GroupBy(item => item.Category))
             {
+                if (group.Key is StorageCategory.Models or StorageCategory.VisualModels or StorageCategory.Legacy)
+                    entries.Children.Add(new TextBlock { Text = (group.Key switch { StorageCategory.Models => "Modelos de programación", StorageCategory.VisualModels => "Modelos de imágenes y animación", _ => "Modelos anteriores · ya no se usan" }) + $" · {group.Sum(item => item.Bytes) / 1e9:0.00} GB", FontSize = 17, FontWeight = FontWeights.SemiBold, Margin = new(0, 8, 0, 12) });
+                foreach (var item in group)
+                {
                 var panel = new StackPanel { Margin = new(0, 0, 0, 18) };
                 var choice = new CheckBox { Content = new TextBlock { Text = $"{item.Title} · {item.Bytes / 1e9:0.00} GB", Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap }, IsEnabled = item.Paths.Length > 0 && item.BlockedReason is null };
                 panel.Children.Add(choice); choices.Add(item, choice);
                 panel.Children.Add(new TextBlock { Text = item.BlockedReason ?? (item.Paths.Length == 0 ? "Sin archivos para eliminar." : string.Join("\n", item.Paths)), TextWrapping = TextWrapping.Wrap, Foreground = item.BlockedReason is null ? Brushes.LightGray : Brushes.Salmon, FontSize = 11, Margin = new(24, 6, 0, 0) });
                 entries.Children.Add(panel);
+                }
             }
             delete.IsEnabled = choices.Any(pair => pair.Value.IsEnabled);
-            status.Text = "No se borró nada. Marcá las categorías que quieras eliminar.";
+            status.Text = "No se borró nada. Marcá solo los modelos u opciones que quieras eliminar.";
         }
         catch (OperationCanceledException) when (inspection.IsCancellationRequested) { }
         catch (Exception ex) { if (!closed) status.Text = "No se pudo revisar el almacenamiento: " + ex.Message; }
@@ -78,9 +83,9 @@ public sealed class StorageWindow : Window
     {
         if (working) return;
         var selected = choices.Where(pair => pair.Value.IsChecked == true && pair.Value.IsEnabled).Select(pair => pair.Key).ToArray();
-        if (selected.Length == 0) { status.Text = "Elegí al menos una categoría."; return; }
+        if (selected.Length == 0) { status.Text = "Elegí al menos un modelo u opción."; return; }
         var summary = string.Join("\n", selected.Select(e => $"• {e.Title} ({e.Bytes / 1e9:0.00} GB)"));
-        if (MessageBox.Show(this, "Se eliminarán permanentemente estas categorías:\n\n" + summary + "\n\nLas rutas aparecen en la ventana. Esta acción no se puede deshacer. ¿Continuar?", "Confirmar limpieza", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        if (MessageBox.Show(this, "Se eliminarán permanentemente estos elementos:\n\n" + summary + "\n\nLos modelos no seleccionados se conservarán. Las rutas aparecen en la ventana. Esta acción no se puede deshacer. ¿Continuar?", "Confirmar limpieza", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         working = deleting = true; delete.IsEnabled = false; status.Text = "Eliminando los archivos seleccionados...";
         try
         {
@@ -88,7 +93,7 @@ public sealed class StorageWindow : Window
             {
                 if (releaseBrowser is not null) await releaseBrowser();
             }
-            await Task.Run(() => cleanup.Delete(selected.Select(e => e.Category)));
+            await Task.Run(() => cleanup.DeleteEntries(selected));
             SettingsDeleted |= selected.Any(e => e.Category == StorageCategory.Settings);
             RequiresRefresh |= selected.Any(e => e.Category is StorageCategory.Conversations or StorageCategory.Settings);
             DataDeleted = true;

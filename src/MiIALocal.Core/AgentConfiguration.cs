@@ -10,7 +10,7 @@ public static class AgentConfiguration
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(project))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         return $"http://127.0.0.1:{port}/{encoded}/session";
     }
-    public static string Build(int modelPort, string apiKey, string instructionFile, int contextTokens = ReleaseProfile.Context, EngineTuning? tuning = null, string modelName = "Qwen 27B · Mi IA Local")
+    public static string Build(int modelPort, string apiKey, string instructionFile, int contextTokens = ReleaseProfile.Context, EngineTuning? tuning = null, string modelName = "Qwen 27B · Forja 50")
     {
         tuning ??= new();
         var model = new { name = modelName, tool_call = true, limit = new { context = contextTokens, output = tuning.MaxOutput } };
@@ -20,7 +20,7 @@ public static class AgentConfiguration
             ["autoupdate"] = false, ["share"] = "disabled",
             ["shell"] = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
             ["instructions"] = new[] { instructionFile },
-            ["provider"] = new { local = new { npm = "@ai-sdk/openai-compatible", name = "IA de este equipo", options = new { baseURL = $"http://127.0.0.1:{modelPort}/v1", apiKey, timeout = 180000, chunkTimeout = 90000 }, models = new Dictionary<string, object> { ["qwen-local"] = model } } },
+            ["provider"] = new { local = new { npm = "@ai-sdk/openai-compatible", name = "Forja 50", options = new { baseURL = $"http://127.0.0.1:{modelPort}/v1", apiKey, timeout = 180000, chunkTimeout = 90000 }, models = new Dictionary<string, object> { ["qwen-local"] = model } } },
             ["permission"] = new { edit = "allow", external_directory = "ask", doom_loop = "ask", task = "deny", bash = new Dictionary<string, string> { ["*"] = "allow", ["git push*"] = "ask", ["git reset --hard*"] = "ask", ["git clean*"] = "ask", ["git branch -D*"] = "ask", ["Remove-Item*"] = "ask", ["rm *"] = "ask", ["del *"] = "ask", ["rmdir *"] = "ask" } },
             ["compaction"] = new { auto = true, prune = true }, ["agent"] = new { build = new { temperature = tuning.AgentTemperature } }
         });

@@ -1,7 +1,7 @@
 namespace MiIALocal.Core;
 
-public enum StorageCategory { Models, Components, Downloads, Conversations, Settings, GitHub, Legacy }
-public sealed record StorageEntry(StorageCategory Category, string Title, string[] Paths, long Bytes, string? BlockedReason);
+public enum StorageCategory { Models, Components, Downloads, Conversations, Settings, GitHub, Legacy, VisualModels }
+public sealed record StorageEntry(StorageCategory Category, string Title, string[] Paths, long Bytes, string? BlockedReason, string? Key = null);
 
 /// <summary>Deletes only known application data. Imported assets, projects and links are protected.</summary>
 public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
@@ -14,16 +14,16 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
     public StorageEntry[] Inspect(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var models = new List<string>(); var legacy = new List<string>(); var partials = new List<string>();
-        var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings), Previous: false))
-            .Concat(VisualCatalog.Images.Concat(VisualCatalog.Animations).Concat(VisualCatalog.GgufAnimations.Except(VisualCatalog.Animations)).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: false)))
-            .Concat(VisualCatalog.Legacy.Append(VisualCatalog.FluxVae).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Previous: true)));
-        foreach (var (asset, modelDirectory, previous) in managedModels)
+        var modelEntries = new List<StorageEntry>(); var partials = new List<string>();
+        var managedModels = new[] { ReleaseProfile.Model, ReleaseProfile.NinferModel }.Select(a => (Asset: a, Directory: paths.ModelDirectoryPath(settings), Category: StorageCategory.Models))
+            .Concat(VisualCatalog.Images.Concat(VisualCatalog.Animations).Concat(VisualCatalog.GgufAnimations.Except(VisualCatalog.Animations)).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Category: StorageCategory.VisualModels)))
+            .Concat(VisualCatalog.Legacy.Append(VisualCatalog.FluxVae).Select(m => (Asset: m.Asset, Directory: Path.GetDirectoryName(VisualCatalog.PathFor(paths, m))!, Category: StorageCategory.Legacy)));
+        foreach (var (asset, modelDirectory, category) in managedModels)
         {
             ct.ThrowIfCancellationRequested();
             var file = Path.Combine(modelDirectory, asset.FileName);
             if (Imported.Any(p => p.Equals(file, Comparison))) continue;
-            if (File.Exists(file)) (previous ? legacy : models).Add(file);
+            if (File.Exists(file)) modelEntries.Add(Entry(category, asset.Name, [file], ct) with { Key = asset.Id });
             var directory = Path.GetDirectoryName(file)!;
             // Check ancestors before even inspecting a custom model directory.
             try { CheckAncestors(directory); }
@@ -39,8 +39,9 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
         foreach (var file in Directory.EnumerateFiles(paths.Root, "settings*.json"))
             if (Path.GetFileName(file) == "settings.json" || Path.GetFileName(file).StartsWith("settings.invalid-", StringComparison.Ordinal) || Path.GetFileName(file).StartsWith("settings.json.before-native-", StringComparison.Ordinal)) configuration.Add(file);
         return [
-            Entry(StorageCategory.Models, "Modelos descargados por Forja", models, ct),
-            Entry(StorageCategory.Legacy, "Modelos anteriores (Wan 5B, FLUX.2 y Qwen3, ya no se usan)", legacy, ct),
+            .. new[] { StorageCategory.Models, StorageCategory.VisualModels, StorageCategory.Legacy }.SelectMany(category =>
+                modelEntries.Any(e => e.Category == category) ? modelEntries.Where(e => e.Category == category)
+                    : new[] { Entry(category, "Sin modelos para eliminar", [], ct) }),
             Entry(StorageCategory.Components, "Motores y herramientas instalados", [paths.Runtime], ct),
             Entry(StorageCategory.Downloads, "Caché y descargas incompletas", new[] { paths.Downloads, Path.Combine(paths.Root, "updates") }.Concat(partials), ct),
             Entry(StorageCategory.Conversations, "Conversaciones e historial de trabajos", new[] { "agent-data", "agent-state", "agent-cache", "agent-config", "browser", "opencode.json", "instrucciones.md", "visual/jobs", "visual/user" }.Select(p => Path.Combine(paths.Root, p)), ct),
@@ -96,17 +97,37 @@ public sealed class StorageCleanup(AppPaths paths, AppSettings settings)
     public void Delete(IEnumerable<StorageCategory> categories)
     {
         var selected = categories.ToHashSet();
-        // Build a fresh plan and validate ALL selections before deleting anything.
-        var plan = Inspect().Where(e => selected.Contains(e.Category)).ToArray();
-        foreach (var entry in plan)
-            if (entry.BlockedReason is not null) throw new IOException(entry.BlockedReason);
+        DeleteEntries(Inspect().Where(e => selected.Contains(e.Category)));
+    }
+    public void DeleteEntries(IEnumerable<StorageEntry> entries)
+    {
+        // Re-inspect and validate the complete selection before deleting any file.
+        // A category may now contain multiple independent models: never expand a UI
+        // selection back into its category, which would erase its neighbours.
+        var current = Inspect(); var plan = new List<StorageEntry>();
+        foreach (var selected in entries)
+        {
+            var fresh = current.SingleOrDefault(e => e.Category == selected.Category && e.Key == selected.Key);
+            if (fresh is null || !fresh.Paths.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(selected.Paths))
+                throw new IOException("El almacenamiento cambió. Volvé a revisar la selección antes de borrar.");
+            if (fresh.BlockedReason is not null) throw new IOException(fresh.BlockedReason);
+            plan.Add(fresh);
+        }
         foreach (var entry in plan)
             foreach (var target in entry.Paths) DeleteTree(target);
     }
     private void DeleteTree(string target)
     {
         Validate(target);
-        if (File.Exists(target)) { File.Delete(target); return; }
+        if (File.Exists(target))
+        {
+            // Git marks its immutable snapshot packs/indexes read-only on Windows.
+            // Clear only that flag, after the same project/import/link protection.
+            var attributes = File.GetAttributes(target);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(target, attributes & ~FileAttributes.ReadOnly);
+            File.Delete(target); return;
+        }
         if (!Directory.Exists(target)) return;
         // No recursive Directory.Delete: links are checked again immediately before each operation.
         foreach (var child in Directory.EnumerateFileSystemEntries(target)) DeleteTree(child);
